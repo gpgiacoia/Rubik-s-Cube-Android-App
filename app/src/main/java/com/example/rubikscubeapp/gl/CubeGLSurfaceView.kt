@@ -14,28 +14,28 @@ class CubeGLSurfaceView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : GLSurfaceView(context, attrs) {
 
-    private val renderer: CubeRenderer
+    private val renderer: RubiksRenderer
 
     init {
         setEGLContextClientVersion(2)
-        renderer = CubeRenderer()
+        renderer = RubiksRenderer()
         setRenderer(renderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
 
-    private class CubeRenderer : Renderer {
+    private class RubiksRenderer : Renderer {
         private val mvpMatrix = FloatArray(16)
         private val projectionMatrix = FloatArray(16)
         private val viewMatrix = FloatArray(16)
         private val rotationMatrix = FloatArray(16)
         private var angle = 0f
 
-        private lateinit var cube: Cube
+        private lateinit var cube: RubiksCube
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-            GLES20.glClearColor(0.05f, 0.05f, 0.08f, 1.0f)
+            GLES20.glClearColor(0.03f, 0.03f, 0.05f, 1.0f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
-            cube = Cube()
+            cube = RubiksCube()
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -47,21 +47,20 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         override fun onDrawFrame(gl: GL10?) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
-            Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 4.5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
-            Matrix.setRotateM(rotationMatrix, 0, angle, 1f, 1.2f, 0.8f)
+            Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 4.8f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
+            Matrix.setRotateM(rotationMatrix, 0, angle, 1f, 1.1f, 0.9f)
             Matrix.multiplyMM(mvpMatrix, 0, viewMatrix, 0, rotationMatrix, 0)
             Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, mvpMatrix, 0)
 
             cube.draw(mvpMatrix)
 
-            // Update angle; keep it within range
-            angle += 0.6f
+            angle += 0.5f
             if (abs(angle) > 3600f) angle = angle % 360f
         }
     }
 }
 
-private class Cube {
+private class RubiksCube {
     private val vertexShaderCode = """
         uniform mat4 uMVPMatrix;
         attribute vec4 vPosition;
@@ -81,80 +80,27 @@ private class Cube {
         }
     """
 
-    // 8 vertices of a cube
-    private val cubeCoords = floatArrayOf(
-        -1f, 1f, 1f,   // 0: left-top-front
-        -1f, -1f, 1f,  // 1: left-bottom-front
-         1f, -1f, 1f,  // 2: right-bottom-front
-         1f, 1f, 1f,   // 3: right-top-front
-        -1f, 1f, -1f,  // 4: left-top-back
-        -1f, -1f, -1f, // 5: left-bottom-back
-         1f, -1f, -1f, // 6: right-bottom-back
-         1f, 1f, -1f   // 7: right-top-back
+    // Standard Rubik's cube face colors
+    // Using: Front=Green, Right=Red, Back=Blue, Left=Orange, Up=White, Down=Yellow
+    private val FACE_COLORS = mapOf(
+        Face.FRONT to floatArrayOf(0.13f, 0.66f, 0.20f, 1f),
+        Face.RIGHT to floatArrayOf(0.85f, 0.10f, 0.10f, 1f),
+        Face.BACK to floatArrayOf(0.12f, 0.35f, 0.96f, 1f),
+        Face.LEFT to floatArrayOf(1.0f, 0.50f, 0.0f, 1f),
+        Face.UP to floatArrayOf(0.98f, 0.98f, 0.98f, 1f),
+        Face.DOWN to floatArrayOf(0.98f, 0.86f, 0.05f, 1f)
     )
 
-    // Each face has 2 triangles = 6 indices. 6 faces
-    private val drawOrder = shortArrayOf(
-        // Front (red)
-        0,1,2, 0,2,3,
-        // Right (green)
-        3,2,6, 3,6,7,
-        // Back (blue)
-        7,6,5, 7,5,4,
-        // Left (yellow)
-        4,5,1, 4,1,0,
-        // Top (orange)
-        4,0,3, 4,3,7,
-        // Bottom (white)
-        1,5,6, 1,6,2
-    )
-
-    // Color per face (RGBA)
-    private val faceColors = arrayOf(
-        floatArrayOf(0.9f, 0.1f, 0.1f, 1f), // front - red
-        floatArrayOf(0.1f, 0.7f, 0.2f, 1f), // right - green
-        floatArrayOf(0.1f, 0.3f, 0.9f, 1f), // back - blue
-        floatArrayOf(0.95f, 0.85f, 0.1f, 1f), // left - yellow
-        floatArrayOf(1.0f, 0.5f, 0.0f, 1f), // top - orange
-        floatArrayOf(0.95f, 0.95f, 0.95f, 1f) // bottom - white
-    )
-
-    private val vertexBuffer = java.nio.ByteBuffer.allocateDirect(cubeCoords.size * 4)
-        .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().apply {
-            put(cubeCoords)
-            position(0)
-        }
-
-    private val drawListBuffer = java.nio.ByteBuffer.allocateDirect(drawOrder.size * 2)
-        .order(java.nio.ByteOrder.nativeOrder()).asShortBuffer().apply {
-            put(drawOrder)
-            position(0)
-        }
-
-    // Expand face colors so each vertex of each triangle has a color
-    private val colorBuffer = run {
-        val colors = FloatArray(drawOrder.size * 4)
-        var ci = 0
-        for (face in 0 until 6) {
-            val c = faceColors[face]
-            // 6 indices per face = 6 vertices used
-            repeat(6) {
-                colors[ci++] = c[0]
-                colors[ci++] = c[1]
-                colors[ci++] = c[2]
-                colors[ci++] = c[3]
-            }
-        }
-        java.nio.ByteBuffer.allocateDirect(colors.size * 4)
-            .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().apply {
-                put(colors)
-                position(0)
-            }
-    }
+    // Vertex/index/color buffers
+    private val baseCube: Mesh
+    private val stickers: Mesh
 
     private val program: Int
 
     init {
+        baseCube = buildBaseCube()
+        stickers = buildStickers()
+
         val vertexShader: Int = loadShader(GLES20.GL_VERTEX_SHADER, vertexShaderCode)
         val fragmentShader: Int = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentShaderCode)
         program = GLES20.glCreateProgram().also { prog ->
@@ -166,42 +112,132 @@ private class Cube {
 
     fun draw(mvpMatrix: FloatArray) {
         GLES20.glUseProgram(program)
-
         val positionHandle = GLES20.glGetAttribLocation(program, "vPosition")
         val colorHandle = GLES20.glGetAttribLocation(program, "aColor")
         val mvpMatrixHandle = GLES20.glGetUniformLocation(program, "uMVPMatrix")
-
-        GLES20.glEnableVertexAttribArray(positionHandle)
-        GLES20.glVertexAttribPointer(
-            positionHandle,
-            3,
-            GLES20.GL_FLOAT,
-            false,
-            3 * 4,
-            vertexBuffer
-        )
-
-        GLES20.glEnableVertexAttribArray(colorHandle)
-        GLES20.glVertexAttribPointer(
-            colorHandle,
-            4,
-            GLES20.GL_FLOAT,
-            false,
-            4 * 4,
-            colorBuffer
-        )
-
         GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0)
 
-        GLES20.glDrawElements(
-            GLES20.GL_TRIANGLES,
-            drawOrder.size,
-            GLES20.GL_UNSIGNED_SHORT,
-            drawListBuffer
-        )
+        // Draw base cube (black body)
+        baseCube.bind(positionHandle, colorHandle)
+        baseCube.draw()
+        baseCube.unbind(positionHandle, colorHandle)
 
-        GLES20.glDisableVertexAttribArray(positionHandle)
-        GLES20.glDisableVertexAttribArray(colorHandle)
+        // Draw stickers on top
+        stickers.bind(positionHandle, colorHandle)
+        stickers.draw()
+        stickers.unbind(positionHandle, colorHandle)
+    }
+
+    private fun buildBaseCube(): Mesh {
+        // A cube centered at origin, size slightly smaller than stickers' plane depth to avoid z-fighting
+        val s = 1.0f
+        val vertices = floatArrayOf(
+            // Front (+Z)
+            -s,  s,  s,
+            -s, -s,  s,
+             s, -s,  s,
+             s,  s,  s,
+            // Right (+X)
+             s,  s,  s,
+             s, -s,  s,
+             s, -s, -s,
+             s,  s, -s,
+            // Back (-Z)
+             s,  s, -s,
+             s, -s, -s,
+            -s, -s, -s,
+            -s,  s, -s,
+            // Left (-X)
+            -s,  s, -s,
+            -s, -s, -s,
+            -s, -s,  s,
+            -s,  s,  s,
+            // Up (+Y)
+            -s,  s, -s,
+            -s,  s,  s,
+             s,  s,  s,
+             s,  s, -s,
+            // Down (-Y)
+            -s, -s,  s,
+            -s, -s, -s,
+             s, -s, -s,
+             s, -s,  s
+        )
+        val indices = shortArrayOf(
+            0,1,2, 0,2,3,      // Front
+            4,5,6, 4,6,7,      // Right
+            8,9,10, 8,10,11,   // Back
+            12,13,14, 12,14,15,// Left
+            16,17,18, 16,18,19,// Up
+            20,21,22, 20,22,23 // Down
+        )
+        val black = floatArrayOf(0.02f, 0.02f, 0.02f, 1f)
+        val colors = FloatArray((vertices.size / 3) * 4) { 0f }
+        var ci = 0
+        repeat(vertices.size / 3) {
+            colors[ci++] = black[0]
+            colors[ci++] = black[1]
+            colors[ci++] = black[2]
+            colors[ci++] = black[3]
+        }
+        return Mesh(vertices, colors, indices)
+    }
+
+    private fun buildStickers(): Mesh {
+        // Build 6 faces * 3x3 stickers, each sticker is a quad (two triangles)
+        val gapInCell = 0.04f // gap inside each 1/3rd cell
+        val depth = 1.001f // small offset from base cube to avoid z-fighting
+
+        val verts = ArrayList<Float>()
+        val cols = ArrayList<Float>()
+        val idx = ArrayList<Short>()
+        var vi: Short = 0
+
+        fun addStickerQuad(face: Face, x0: Float, y0: Float, x1: Float, y1: Float) {
+            val c = FACE_COLORS[face] ?: floatArrayOf(1f, 1f, 1f, 1f)
+            // Map face-local (u,v) in [-1,1] to world xyz on each face
+            val p0 = face.mapTo3D(x0, y0, depth)
+            val p1 = face.mapTo3D(x0, y1, depth)
+            val p2 = face.mapTo3D(x1, y1, depth)
+            val p3 = face.mapTo3D(x1, y0, depth)
+
+            // Add 4 vertices with color
+            fun addVertex(p: FloatArray) {
+                verts.add(p[0]); verts.add(p[1]); verts.add(p[2])
+                cols.add(c[0]); cols.add(c[1]); cols.add(c[2]); cols.add(c[3])
+            }
+            addVertex(p0)
+            addVertex(p1)
+            addVertex(p2)
+            addVertex(p3)
+
+            // Two triangles
+            idx.add(vi); idx.add((vi+1).toShort()); idx.add((vi+2).toShort())
+            idx.add(vi); idx.add((vi+2).toShort()); idx.add((vi+3).toShort())
+            vi = (vi + 4).toShort()
+        }
+
+        // For each face create 3x3 grid
+        for (face in Face.values()) {
+            for (iy in 0 until 3) {
+                for (ix in 0 until 3) {
+                    val cellMinX = -1f + (2f/3f)*ix
+                    val cellMaxX = -1f + (2f/3f)*(ix+1)
+                    val cellMinY = -1f + (2f/3f)*iy
+                    val cellMaxY = -1f + (2f/3f)*(iy+1)
+                    val x0 = cellMinX + gapInCell
+                    val x1 = cellMaxX - gapInCell
+                    val y0 = cellMinY + gapInCell
+                    val y1 = cellMaxY - gapInCell
+                    addStickerQuad(face, x0, y0, x1, y1)
+                }
+            }
+        }
+
+        val vArr = verts.toFloatArray()
+        val cArr = cols.toFloatArray()
+        val iArr = ShortArray(idx.size) { idx[it] }
+        return Mesh(vArr, cArr, iArr)
     }
 
     private fun loadShader(type: Int, shaderCode: String): Int {
@@ -210,5 +246,48 @@ private class Cube {
             GLES20.glCompileShader(shader)
         }
     }
-}
 
+    private enum class Face { FRONT, RIGHT, BACK, LEFT, UP, DOWN }
+
+    private class Mesh(vertices: FloatArray, colors: FloatArray, indices: ShortArray) {
+        private val vertexBuffer = java.nio.ByteBuffer.allocateDirect(vertices.size * 4)
+            .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().apply {
+                put(vertices); position(0)
+            }
+        private val colorBuffer = java.nio.ByteBuffer.allocateDirect(colors.size * 4)
+            .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().apply {
+                put(colors); position(0)
+            }
+        private val indexBuffer = java.nio.ByteBuffer.allocateDirect(indices.size * 2)
+            .order(java.nio.ByteOrder.nativeOrder()).asShortBuffer().apply {
+                put(indices); position(0)
+            }
+        private val indexCount = indices.size
+
+        fun bind(positionHandle: Int, colorHandle: Int) {
+            GLES20.glEnableVertexAttribArray(positionHandle)
+            GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT, false, 3*4, vertexBuffer)
+            GLES20.glEnableVertexAttribArray(colorHandle)
+            GLES20.glVertexAttribPointer(colorHandle, 4, GLES20.GL_FLOAT, false, 4*4, colorBuffer)
+        }
+        fun draw() {
+            GLES20.glDrawElements(GLES20.GL_TRIANGLES, indexCount, GLES20.GL_UNSIGNED_SHORT, indexBuffer)
+        }
+        fun unbind(positionHandle: Int, colorHandle: Int) {
+            GLES20.glDisableVertexAttribArray(positionHandle)
+            GLES20.glDisableVertexAttribArray(colorHandle)
+        }
+    }
+
+    private fun Face.mapTo3D(u: Float, v: Float, depth: Float): FloatArray {
+        // u,v in [-1,1] on face plane. depth is slightly > 1 to avoid z-fighting.
+        return when (this) {
+            Face.FRONT -> floatArrayOf(u, v, depth)
+            Face.BACK  -> floatArrayOf(-u, v, -depth)
+            Face.RIGHT -> floatArrayOf(depth, v, -u)
+            Face.LEFT  -> floatArrayOf(-depth, v, u)
+            Face.UP    -> floatArrayOf(u, depth, -v)
+            Face.DOWN  -> floatArrayOf(u, -depth, v)
+        }
+    }
+}

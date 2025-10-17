@@ -36,7 +36,9 @@
         app:layout_constraintVertical_bias="0.0"
         android:layout_marginTop="32dp" />
 
-    <Button
+
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/Start"
         android:layout_width="0dp"
         android:layout_height="56dp"
@@ -45,7 +47,9 @@
         android:textColor="#FFFFFFFF"
         android:textAllCaps="false"
         android:fontFamily="@font/irish_grover"
-        android:background="@drawable/btn_connect_red"
+        app:backgroundTint="#D32F2F"
+        app:cornerRadius="28dp"
+        app:rippleColor="#33FFFFFF"
         app:layout_constraintTop_toBottomOf="@id/textView2"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"

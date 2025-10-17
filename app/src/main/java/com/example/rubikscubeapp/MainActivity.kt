@@ -7,7 +7,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.example.rubikscubeapp.DeviceListActivity
 import com.example.rubikscubeapp.gl.CubeGLSurfaceView
 
 class MainActivity : AppCompatActivity() {
@@ -21,7 +20,7 @@ class MainActivity : AppCompatActivity() {
         //find button in view
         val btn: Button = findViewById(R.id.Start)
         btn.setOnClickListener {
-            startActivity(Intent(this, DeviceListActivity::class.java))
+            startActivity(Intent(this, com.example.rubikscubeapp.DeviceListActivity::class.java))
         }
 
         cubeView = findViewById(R.id.cubeBackground)
