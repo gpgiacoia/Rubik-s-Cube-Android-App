@@ -1,9 +1,12 @@
 package com.example.rubikscubeapp
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -11,6 +14,18 @@ import com.example.rubikscubeapp.gl.CubeGLSurfaceView
 
 class MainActivity : AppCompatActivity() {
     private var cubeView: CubeGLSurfaceView? = null
+
+    private val selectDeviceLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val address = result.data?.getStringExtra("device_address")
+            if (!address.isNullOrEmpty()) {
+                // TODO: initiate connection with selected device address
+                Toast.makeText(this, "Selected device: $address", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,7 +35,8 @@ class MainActivity : AppCompatActivity() {
         //find button in view
         val btn: Button = findViewById(R.id.Start)
         btn.setOnClickListener {
-            startActivity(Intent(this, com.example.rubikscubeapp.DeviceListActivity::class.java))
+            val intent = Intent(this, DeviceListActivity::class.java)
+            selectDeviceLauncher.launch(intent)
         }
 
         cubeView = findViewById(R.id.cubeBackground)

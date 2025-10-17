@@ -1,14 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M16,16h76a0,0 0 0,1 0,0v76a0,0 0 0,1 0,0h-76a0,0 0 0,1 0,0z"/>
-    <path
-        android:fillColor="#D32F2F"
-        android:pathData="M28,54c0,-14.36 11.64,-26 26,-26s26,11.64 26,26 -11.64,26 -26,26 -26,-11.64 -26,-26z"/>
-</vector>
-
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/cube" />

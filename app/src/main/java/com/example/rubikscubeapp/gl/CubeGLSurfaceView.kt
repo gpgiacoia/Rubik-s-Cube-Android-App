@@ -1,6 +1,7 @@
 package com.example.rubikscubeapp.gl
 
 import android.content.Context
+import android.graphics.PixelFormat
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
@@ -18,6 +19,13 @@ class CubeGLSurfaceView @JvmOverloads constructor(
 
     init {
         setEGLContextClientVersion(2)
+        // Request RGBA8888 so we have an alpha channel
+        setEGLConfigChooser(8, 8, 8, 8, 16, 0)
+        // Make the SurfaceView translucent so clear alpha shows through
+        holder.setFormat(PixelFormat.TRANSLUCENT)
+        // Place the surface on top so transparency reveals UI beneath
+        setZOrderOnTop(true)
+
         renderer = RubiksRenderer()
         setRenderer(renderer)
         renderMode = RENDERMODE_CONTINUOUSLY
@@ -33,7 +41,8 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         private lateinit var cube: RubiksCube
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-            GLES20.glClearColor(0.03f, 0.03f, 0.05f, 1.0f)
+            // Fully transparent clear color (no background)
+            GLES20.glClearColor(0f, 0f, 0f, 0f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             cube = RubiksCube()
         }
@@ -218,7 +227,7 @@ private class RubiksCube {
         }
 
         // For each face create 3x3 grid
-        for (face in Face.values()) {
+        for (face in Face.entries) {
             for (iy in 0 until 3) {
                 for (ix in 0 until 3) {
                     val cellMinX = -1f + (2f/3f)*ix
