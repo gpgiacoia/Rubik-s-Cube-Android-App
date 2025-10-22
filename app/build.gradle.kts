@@ -45,6 +45,7 @@ dependencies {
 
     // Ensure Google Fonts provider cert arrays are available
     implementation("com.google.android.gms:play-services-base:18.5.0")
+    implementation(libs.androidbrowserhelper)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
