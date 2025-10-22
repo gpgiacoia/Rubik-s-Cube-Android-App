@@ -2,6 +2,7 @@ package com.example.rubikscubeapp
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
@@ -10,8 +11,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.ImageView
 import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -21,7 +27,12 @@ import com.google.android.material.button.MaterialButton
 class DeviceListActivity : AppCompatActivity() {
 
     private lateinit var listView: ListView
-    private var devices: List<BluetoothDevice> = emptyList()
+
+    // Represent either a temporary demo item or a real Bluetooth device
+    private sealed class DeviceItem {
+        data class Temp(val title: String, val subtitle: String) : DeviceItem()
+        data class Real(val device: BluetoothDevice) : DeviceItem()
+    }
 
     private val requestEnableBt = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -105,21 +116,77 @@ class DeviceListActivity : AppCompatActivity() {
             return
         }
 
-        devices = adapter.bondedDevices?.toList()?.sortedBy { it.name ?: it.address } ?: emptyList()
-        val items = devices.map { d ->
-            val name = d.name ?: "Unknown"
-            "$name\n${d.address}"
-        }
+        val realDevices: List<BluetoothDevice> = adapter.bondedDevices?.toList()?.sortedBy { it.name ?: it.address } ?: emptyList()
 
-        val adapterUi = ArrayAdapter(this, android.R.layout.simple_list_item_1, items)
+        // Build the combined list with a temporary demo item at the top
+        val items = mutableListOf<DeviceItem>()
+        items += DeviceItem.Temp(title = "Rubik's cube solver 1.0", subtitle = "Demo")
+        items += realDevices.map { DeviceItem.Real(it) }
+
+        val adapterUi = DeviceItemAdapter(this, items)
         listView.adapter = adapterUi
 
         listView.setOnItemClickListener { _, _, position, _ ->
-            val device = devices[position]
-            // Return the selected device address to the caller
-            val data = Intent().apply { putExtra("device_address", device.address) }
-            setResult(Activity.RESULT_OK, data)
-            finish()
+            when (val item = adapterUi.getItem(position)) {
+                is DeviceItem.Temp -> showConnectedDialogAndNavigate(item.title)
+                is DeviceItem.Real -> {
+                    // Preserve existing behavior: return the selected device address
+                    val device = item.device
+                    val data = Intent().apply { putExtra("device_address", device.address) }
+                    setResult(Activity.RESULT_OK, data)
+                    finish()
+                }
+                else -> {}
+            }
         }
+    }
+
+    private fun showConnectedDialogAndNavigate(deviceTitle: String) {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_connected_success, null, false)
+        view.findViewById<TextView>(R.id.message)?.text = "$deviceTitle is now connected and ready to use."
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        view.findViewById<MaterialButton>(R.id.btnContinue)?.setOnClickListener {
+            dialog.dismiss()
+            startActivity(Intent(this, ScanCubeActivity::class.java))
+        }
+
+        dialog.show()
+    }
+
+    private class DeviceItemAdapter(
+        context: Context,
+        private val items: List<DeviceItem>
+    ) : ArrayAdapter<DeviceItem>(context, 0, items) {
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val view = convertView ?: LayoutInflater.from(context).inflate(R.layout.list_item_device, parent, false)
+            val item = items[position]
+
+            val icon = view.findViewById<ImageView>(R.id.icon)
+            val name = view.findViewById<TextView>(R.id.name)
+            val subtitle = view.findViewById<TextView>(R.id.subtitle)
+
+            when (item) {
+                is DeviceItem.Temp -> {
+                    icon.setImageResource(R.drawable.rubiks_cube)
+                    name.text = item.title
+                    subtitle.text = item.subtitle
+                }
+                is DeviceItem.Real -> {
+                    icon.setImageResource(R.drawable.rubiks_cube)
+                    val dev = item.device
+                    name.text = dev.name ?: dev.address
+                    subtitle.text = "Paired"
+                }
+            }
+            return view
+        }
+
+        override fun getItem(position: Int): DeviceItem? = items.getOrNull(position)
+        override fun getCount(): Int = items.size
     }
 }
