@@ -22,6 +22,9 @@
             android:resource="@array/preloaded_fonts" />
 
         <activity
+            android:name=".ScanCubeActivity"
+            android:exported="false" />
+        <activity
             android:name=".DeviceListActivity"
             android:exported="false" />
         <activity

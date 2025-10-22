@@ -7,6 +7,10 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.util.AttributeSet
 import kotlin.math.abs
+import java.io.File
+import java.io.Reader
+import java.io.BufferedReader
+import java.io.StringReader
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -31,6 +35,23 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         renderMode = RENDERMODE_CONTINUOUSLY
     }
 
+    // Public helper: load cube state from CSV string. This queues the update on the GL thread
+    // and requests a render. CSV format: 6 non-empty rows, each with 9 integers 0..5, comma-separated.
+    fun loadCubeFromCsvString(csv: String) {
+        queueEvent {
+            renderer.applyCubeStateCsv(csv)
+        }
+        requestRender()
+    }
+
+    // Public helper: load cube state from a File. This reads the file on the caller thread
+    // and forwards the contents to the GL thread.
+    @Suppress("unused")
+    fun loadCubeFromCsvFile(file: File) {
+        val text = try { file.readText() } catch (_: Exception) { return }
+        loadCubeFromCsvString(text)
+    }
+
     private class RubiksRenderer : Renderer {
         private val mvpMatrix = FloatArray(16)
         private val projectionMatrix = FloatArray(16)
@@ -39,12 +60,18 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         private var angle = 0f
 
         private lateinit var cube: RubiksCube
+        private var pendingCsv: String? = null
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             // Fully transparent clear color (no background)
             GLES20.glClearColor(0f, 0f, 0f, 0f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             cube = RubiksCube()
+            // Apply any pending CSV once the cube is ready
+            pendingCsv?.let { csv ->
+                cube.setCubeFromCsvString(csv)
+                pendingCsv = null
+            }
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -65,6 +92,16 @@ class CubeGLSurfaceView @JvmOverloads constructor(
 
             angle += 0.5f
             if (abs(angle) > 3600f) angle = angle % 360f
+        }
+
+        // Called on GL thread to apply a CSV string to the cube state
+        fun applyCubeStateCsv(csv: String): Boolean {
+            return if (!::cube.isInitialized) {
+                pendingCsv = csv
+                false
+            } else {
+                cube.setCubeFromCsvString(csv)
+            }
         }
     }
 }
@@ -89,24 +126,30 @@ private class RubiksCube {
         }
     """
 
-    // Standard Rubik's cube face colors
-    // Using: Front=Green, Right=Red, Back=Blue, Left=Orange, Up=White, Down=Yellow
-    private val FACE_COLORS = mapOf(
-        Face.FRONT to floatArrayOf(0.13f, 0.66f, 0.20f, 1f),
-        Face.RIGHT to floatArrayOf(0.85f, 0.10f, 0.10f, 1f),
-        Face.BACK to floatArrayOf(0.12f, 0.35f, 0.96f, 1f),
-        Face.LEFT to floatArrayOf(1.0f, 0.50f, 0.0f, 1f),
-        Face.UP to floatArrayOf(0.98f, 0.98f, 0.98f, 1f),
-        Face.DOWN to floatArrayOf(0.98f, 0.86f, 0.05f, 1f)
+    // Integer-to-color mapping requested by user:
+    // 0=white, 1=yellow, 2=green, 3=red, 4=orange, 5=blue
+    private val INT_TO_COLOR = arrayOf(
+        floatArrayOf(0.98f, 0.98f, 0.98f, 1f), // 0 white
+        floatArrayOf(0.98f, 0.86f, 0.05f, 1f), // 1 yellow
+        floatArrayOf(0.13f, 0.66f, 0.20f, 1f), // 2 green (front)
+        floatArrayOf(0.85f, 0.10f, 0.10f, 1f), // 3 red (right)
+        floatArrayOf(1.0f, 0.50f, 0.0f, 1f),   // 4 orange (left)
+        floatArrayOf(0.12f, 0.35f, 0.96f, 1f)  // 5 blue (back)
     )
+
+    // Cube configuration as a 6x9 int array: row per face, 9 stickers per face.
+    // Face row order corresponds to the Face enum declaration order: FRONT, RIGHT, BACK, LEFT, UP, DOWN
+    private var cubeState: Array<IntArray> = Array(6) { IntArray(9) }
 
     // Vertex/index/color buffers
     private val baseCube: Mesh
-    private val stickers: Mesh
+    private var stickers: Mesh
 
     private val program: Int
 
     init {
+        initDefaultState()
+
         baseCube = buildBaseCube()
         stickers = buildStickers()
 
@@ -116,6 +159,17 @@ private class RubiksCube {
             GLES20.glAttachShader(prog, vertexShader)
             GLES20.glAttachShader(prog, fragmentShader)
             GLES20.glLinkProgram(prog)
+        }
+    }
+
+    private fun initDefaultState() {
+        // Fill each face row with the solved color index.
+        // Using mapping: FRONT->2, RIGHT->3, BACK->5, LEFT->4, UP->0, DOWN->1
+        val faceDefaults = intArrayOf(2, 3, 5, 4, 0, 1)
+        for (f in 0..5) {
+            for (i in 0..8) {
+                cubeState[f][i] = faceDefaults[f]
+            }
         }
     }
 
@@ -202,8 +256,7 @@ private class RubiksCube {
         val idx = ArrayList<Short>()
         var vi: Short = 0
 
-        fun addStickerQuad(face: Face, x0: Float, y0: Float, x1: Float, y1: Float) {
-            val c = FACE_COLORS[face] ?: floatArrayOf(1f, 1f, 1f, 1f)
+        fun addStickerQuad(face: Face, x0: Float, y0: Float, x1: Float, y1: Float, colorArr: FloatArray) {
             // Map face-local (u,v) in [-1,1] to world xyz on each face
             val p0 = face.mapTo3D(x0, y0, depth)
             val p1 = face.mapTo3D(x0, y1, depth)
@@ -213,7 +266,7 @@ private class RubiksCube {
             // Add 4 vertices with color
             fun addVertex(p: FloatArray) {
                 verts.add(p[0]); verts.add(p[1]); verts.add(p[2])
-                cols.add(c[0]); cols.add(c[1]); cols.add(c[2]); cols.add(c[3])
+                cols.add(colorArr[0]); cols.add(colorArr[1]); cols.add(colorArr[2]); cols.add(colorArr[3])
             }
             addVertex(p0)
             addVertex(p1)
@@ -226,8 +279,8 @@ private class RubiksCube {
             vi = (vi + 4).toShort()
         }
 
-        // For each face create 3x3 grid
-        for (face in Face.entries) {
+        // For each face create 3x3 grid. Face row order corresponds to cubeState rows.
+        for ((faceIndex, face) in Face.entries.withIndex()) {
             for (iy in 0 until 3) {
                 for (ix in 0 until 3) {
                     val cellMinX = -1f + (2f/3f)*ix
@@ -238,7 +291,12 @@ private class RubiksCube {
                     val x1 = cellMaxX - gapInCell
                     val y0 = cellMinY + gapInCell
                     val y1 = cellMaxY - gapInCell
-                    addStickerQuad(face, x0, y0, x1, y1)
+
+                    val stickerIndex = iy*3 + ix
+                    val colorIndex = cubeState.getOrNull(faceIndex)?.getOrNull(stickerIndex) ?: 0
+                    val colorArr = if (colorIndex in 0..5) INT_TO_COLOR[colorIndex] else INT_TO_COLOR[0]
+
+                    addStickerQuad(face, x0, y0, x1, y1, colorArr)
                 }
             }
         }
@@ -247,6 +305,37 @@ private class RubiksCube {
         val cArr = cols.toFloatArray()
         val iArr = ShortArray(idx.size) { idx[it] }
         return Mesh(vArr, cArr, iArr)
+    }
+
+    // CSV loaders. The CSV should have exactly 6 non-empty rows, each with 9 comma-separated integers 0..5.
+    // Row order used here matches the Face enum order: FRONT, RIGHT, BACK, LEFT, UP, DOWN.
+    fun setCubeFromCsvString(csv: String): Boolean {
+        val reader: Reader = StringReader(csv)
+        val br = BufferedReader(reader)
+        val lines = ArrayList<String>()
+        br.useLines { seq ->
+            seq.forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.isNotEmpty()) lines.add(trimmed)
+            }
+        }
+        if (lines.size != 6) return false
+
+        val newState = Array(6) { IntArray(9) }
+        for (i in 0 until 6) {
+            val parts = lines[i].split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            if (parts.size != 9) return false
+            for (j in 0 until 9) {
+                val num = parts[j].toIntOrNull() ?: return false
+                if (num !in 0..5) return false
+                newState[i][j] = num
+            }
+        }
+
+        // Accept and rebuild stickers
+        cubeState = newState
+        stickers = buildStickers()
+        return true
     }
 
     private fun loadShader(type: Int, shaderCode: String): Int {

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    tools:context=".ScanCubeActivity">
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideline_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.06" />
+
+    <!-- Back button styled like activity_device_list -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/Back"
+        android:layout_width="100sp"
+        android:layout_height="55sp"
+        android:text="Back"
+        android:textColor="#FFFFFFFF"
+        android:textSize="17sp"
+        app:fontFamily="@font/irish_grover"
+        app:backgroundTint="#D32F2F"
+        app:cornerRadius="16dp"
+        app:strokeColor="#BDBDBD"
+        app:strokeWidth="1dp"
+        android:elevation="6dp"
+        app:rippleColor="#80FFFFFF"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.064"
+        app:layout_constraintVertical_bias="0.024"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintWidth_percent="0.8" />
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="40sp"
+        android:text="Rubik's Cube #1"
+        android:textColor="#000000"
+        android:textSize="30sp"
+        android:textStyle="bold"
+        app:fontFamily="@font/irish_grover"
+        app:layout_constraintTop_toBottomOf="@id/guideline_top"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4sp"
+        android:text="Disconected"
+        android:textColor="#666666"
+        android:textSize="14sp"
+        app:layout_constraintTop_toBottomOf="@id/title"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Big square Scan Cube button in the center -->
+
+    <!-- Disabled controls below -->
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/scanCube"
+        android:layout_width="0sp"
+        android:layout_height="0sp"
+        android:layout_marginTop="32dp"
+        android:text="Scan Cube"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp"
+        app:backgroundTint="#D32F2F"
+        app:cornerRadius="20sp"
+        app:fontFamily="@font/irish_grover"
+        app:layout_constraintDimensionRatio="1:1"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.497"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/subtitle"
+        app:layout_constraintWidth_percent="0.55" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnStart"
+        android:layout_width="0sp"
+        android:layout_height="70sp"
+        android:layout_marginTop="48dp"
+        android:enabled="false"
+        android:text="Start"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp"
+        app:backgroundTint="#BDBDBD"
+        app:cornerRadius="20sp"
+        app:fontFamily="@font/irish_grover"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/scanCube"
+        app:layout_constraintWidth_percent="0.8" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnStop"
+        android:layout_width="0sp"
+        android:layout_height="70sp"
+        android:layout_marginTop="24dp"
+        android:enabled="false"
+        android:text="Stop"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp"
+        app:backgroundTint="#BDBDBD"
+        app:cornerRadius="20sp"
+        app:fontFamily="@font/irish_grover"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnStart"
+        app:layout_constraintWidth_percent="0.8" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSpeed"
+        android:layout_width="0sp"
+        android:layout_height="70sp"
+        android:layout_marginTop="16sp"
+        android:layout_marginBottom="24sp"
+        android:enabled="false"
+        android:text="1x"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp"
+        app:backgroundTint="#BDBDBD"
+        app:cornerRadius="20sp"
+        app:fontFamily="@font/irish_grover"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnStop"
+        app:layout_constraintVertical_bias="0.0"
+        app:layout_constraintWidth_percent="0.8" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

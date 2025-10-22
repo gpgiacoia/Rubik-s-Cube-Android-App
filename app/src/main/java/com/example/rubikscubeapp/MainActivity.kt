@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.rubikscubeapp.gl.CubeGLSurfaceView
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
     private var cubeView: CubeGLSurfaceView? = null
@@ -40,6 +41,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         cubeView = findViewById(R.id.cubeBackground)
+
+        // Initialize the cube view with a temporary CSV representing a solved cube state.
+        // Order expected by loader: FRONT, RIGHT, BACK, LEFT, UP, DOWN
+        // Color indices: 0 white, 1 yellow, 2 green, 3 red, 4 orange, 5 blue
+        val csvSolved = buildString {
+            appendLine("2,2,2,2,2,2,2,2,2") // FRONT (green)
+            appendLine("3,3,3,3,3,3,3,3,3") // RIGHT (red)
+            appendLine("5,5,5,5,5,5,5,5,5") // BACK (blue)
+            appendLine("4,4,4,4,4,4,4,4,4") // LEFT (orange)
+            appendLine("0,0,0,0,0,0,0,0,0") // UP (white)
+            appendLine("1,1,1,1,1,1,1,1,1") // DOWN (yellow)
+        }
+        try {
+            val tempFile: File = File.createTempFile("cube_init_", ".csv", cacheDir)
+            tempFile.writeText(csvSolved)
+            cubeView?.loadCubeFromCsvFile(tempFile)
+        } catch (_: Exception) {
+            // Ignore init failure; view will show its default state
+        }
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
