@@ -13,4 +13,8 @@ object SessionStore {
     // UI/session state: current running flag and chosen speed label
     var isRunning: Boolean = false
     var speedLabel: String? = null
+
+    // Timer state (milliseconds)
+    var elapsedMs: Long = 0L
+    var runningSinceMs: Long? = null
 }

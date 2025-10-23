@@ -5,6 +5,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
@@ -13,6 +16,7 @@ import com.google.android.material.button.MaterialButton
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
+import java.util.Locale
 
 class ScanCubeActivity : AppCompatActivity() {
 
@@ -22,6 +26,17 @@ class ScanCubeActivity : AppCompatActivity() {
     private lateinit var btnStart: MaterialButton
     private lateinit var btnStop: MaterialButton
     private lateinit var btnSpeed: MaterialButton
+    private lateinit var timerText: TextView
+
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val tickRunnable = object : Runnable {
+        override fun run() {
+            updateTimerDisplay()
+            if (SessionStore.isRunning) {
+                uiHandler.postDelayed(this, 200)
+            }
+        }
+    }
 
     private val pickCsv = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -44,12 +59,14 @@ class ScanCubeActivity : AppCompatActivity() {
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
         btnSpeed = findViewById(R.id.btnSpeed)
+        timerText = findViewById(R.id.timerText)
 
         // Initial states based on session (if cube already loaded this run)
         if (SessionStore.cubeCsv != null) {
             showCube(SessionStore.cubeCsv!!)
         } else {
             applyDisabledControls()
+            updateTimerDisplay()
         }
 
         // Wire actions
@@ -59,14 +76,24 @@ class ScanCubeActivity : AppCompatActivity() {
         btnSpeed.setOnClickListener { showSpeedMenu() }
 
         // Restore speed label if set in this run
-        if (SessionStore.speedLabel != null) {
-            btnSpeed.text = SessionStore.speedLabel
-        }
+        SessionStore.speedLabel?.let { btnSpeed.text = it }
 
         // Restore running state
         if (SessionStore.isRunning) {
             setRunningUi(running = true)
+            startTimerTicker()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (SessionStore.isRunning) startTimerTicker() else updateTimerDisplay()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Stop posting to handler to avoid leaks; state remains in SessionStore
+        uiHandler.removeCallbacks(tickRunnable)
     }
 
     private fun handleCsvPicked(uri: Uri) {
@@ -94,6 +121,7 @@ class ScanCubeActivity : AppCompatActivity() {
         cubeView.visibility = android.view.View.VISIBLE
         subtitle.text = "Connected"
         applyControlsForCubeLoaded()
+        if (SessionStore.isRunning) startTimerTicker() else updateTimerDisplay()
     }
 
     private fun applyDisabledControls() {
@@ -108,22 +136,8 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnStart, enabled = true, colorHex = "#D32F2F")
         setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
         setButtonState(btnSpeed, enabled = true, colorHex = "#3F51B5")
-        // If we had a previous running state, apply it
+        // If we had a previous running state, apply it (timer handled by caller)
         if (SessionStore.isRunning) setRunningUi(true)
-    }
-
-    private fun onStartPressed() {
-        if (btnStart.isEnabled) {
-            setRunningUi(running = true)
-            SessionStore.isRunning = true
-        }
-    }
-
-    private fun onStopPressed() {
-        if (btnStop.isEnabled) {
-            setRunningUi(running = false)
-            SessionStore.isRunning = false
-        }
     }
 
     private fun setRunningUi(running: Boolean) {
@@ -136,6 +150,46 @@ class ScanCubeActivity : AppCompatActivity() {
             setButtonState(btnStart, enabled = true, colorHex = "#D32F2F")
             setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
         }
+    }
+
+    private fun onStartPressed() {
+        if (!btnStart.isEnabled) return
+        if (!SessionStore.isRunning) {
+            SessionStore.isRunning = true
+            SessionStore.runningSinceMs = SystemClock.elapsedRealtime()
+        }
+        setRunningUi(running = true)
+        startTimerTicker()
+    }
+
+    private fun onStopPressed() {
+        if (!btnStop.isEnabled) return
+        if (SessionStore.isRunning) {
+            // Accumulate elapsed time
+            val since = SessionStore.runningSinceMs
+            if (since != null) {
+                SessionStore.elapsedMs += (SystemClock.elapsedRealtime() - since)
+            }
+            SessionStore.runningSinceMs = null
+            SessionStore.isRunning = false
+        }
+        setRunningUi(running = false)
+        // Stop updates
+        uiHandler.removeCallbacks(tickRunnable)
+        updateTimerDisplay()
+    }
+
+    private fun startTimerTicker() {
+        uiHandler.removeCallbacks(tickRunnable)
+        uiHandler.post(tickRunnable)
+    }
+
+    private fun updateTimerDisplay() {
+        val base = SessionStore.elapsedMs
+        val extra = SessionStore.runningSinceMs?.let { SystemClock.elapsedRealtime() - it } ?: 0L
+        val totalMs = base + extra
+        val seconds = totalMs / 1000.0
+        timerText.text = String.format(Locale.US, "%.3f", seconds)
     }
 
     private fun showSpeedMenu() {

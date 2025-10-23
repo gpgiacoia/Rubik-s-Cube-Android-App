@@ -43,13 +43,14 @@
         android:id="@+id/title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="52dp"
+        android:layout_marginTop="40dp"
         android:text="Rubik's Cube #1"
         android:textColor="#000000"
         android:textSize="30sp"
         android:textStyle="bold"
         app:fontFamily="@font/irish_grover"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.505"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/guideline_top" />
 
@@ -80,6 +81,7 @@
         <!-- Big square Scan Cube button (shown first) -->
 
         <!-- Cube view placeholder; shown after import -->
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/scanCube"
             android:layout_width="0dp"
@@ -151,7 +153,7 @@
         android:layout_width="0sp"
         android:layout_height="70sp"
         android:layout_marginTop="16sp"
-        android:layout_marginBottom="24sp"
+        android:layout_marginBottom="8sp"
         android:enabled="false"
         android:text="1x"
         android:textColor="#FFFFFFFF"
@@ -159,11 +161,25 @@
         app:backgroundTint="#BDBDBD"
         app:cornerRadius="20sp"
         app:fontFamily="@font/irish_grover"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnStop"
-        app:layout_constraintVertical_bias="0.0"
         app:layout_constraintWidth_percent="0.8" />
+
+    <!-- Timer display below all buttons -->
+    <TextView
+        android:id="@+id/timerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0.000"
+        android:textSize="22sp"
+        android:textColor="#000000"
+        app:fontFamily="@font/irish_grover"
+        app:layout_constraintTop_toBottomOf="@id/btnSpeed"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintVertical_bias="0.0"
+        android:layout_marginBottom="24dp"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
