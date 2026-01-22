@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/solver_main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".SolverActivity">
+
+    <com.example.rubikscubeapp.gl.CubeGLSurfaceView
+        android:id="@+id/cubeSolverBackground"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@id/controls_divider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/toggleSolverRotationButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:text="Stop Rotation"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/controls_divider"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="?android:attr/listDivider"
+        app:layout_constraintBottom_toTopOf="@+id/scramble_button" />
+
+    <Button
+        android:id="@+id/scramble_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Scramble"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@+id/solve_speed_group"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <RadioGroup
+        android:id="@+id/solve_speed_group"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <RadioButton
+            android:id="@+id/slowButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Slow (40+)" />
+
+        <RadioButton
+            android:id="@+id/mediumButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Medium (30)" />
+
+        <RadioButton
+            android:id="@+id/fastButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:checked="true"
+            android:text="Fast (Optimal)" />
+
+    </RadioGroup>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
