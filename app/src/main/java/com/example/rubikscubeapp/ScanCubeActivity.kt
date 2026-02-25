@@ -27,7 +27,10 @@ class ScanCubeActivity : AppCompatActivity() {
     private lateinit var btnStop: MaterialButton
     private lateinit var btnSpeed: MaterialButton
     private lateinit var btnShuffle: MaterialButton
+    private lateinit var btnLock: MaterialButton
     private lateinit var timerText: TextView
+
+    private var isLocked = false
 
     private val uiHandler = Handler(Looper.getMainLooper())
     private val tickRunnable = object : Runnable {
@@ -61,7 +64,12 @@ class ScanCubeActivity : AppCompatActivity() {
         btnStop = findViewById(R.id.btnStop)
         btnSpeed = findViewById(R.id.btnSpeed)
         btnShuffle = findViewById(R.id.shuffle)
+        btnLock = findViewById(R.id.lock)
         timerText = findViewById(R.id.timerText)
+
+        // Initialize lock button enabled state: disabled until a cube CSV is loaded
+        val hasCube = SessionStore.cubeCsv != null
+        setButtonState(btnLock, enabled = hasCube, colorHex = if (hasCube) "#80FF00FF" else "#BDBDBD")
 
         // Initial states based on session (if cube already loaded this run)
         if (SessionStore.cubeCsv != null) {
@@ -84,6 +92,14 @@ class ScanCubeActivity : AppCompatActivity() {
             cubeView.setSolidBlue()
         }
 
+        // Wire lock button: behave same as MainActivity's lock (only works when enabled)
+        btnLock.setOnClickListener {
+            if (!btnLock.isEnabled) return@setOnClickListener
+            isLocked = !isLocked
+            cubeView.setCubeLocked(isLocked)
+            updateLockButtonTint()
+        }
+
         // Restore speed label if set in this run
         SessionStore.speedLabel?.let { btnSpeed.text = it }
 
@@ -92,6 +108,16 @@ class ScanCubeActivity : AppCompatActivity() {
             setRunningUi(running = true)
             startTimerTicker()
         }
+    }
+
+    private fun updateLockButtonTint() {
+        // If the lock button is disabled, show gray; otherwise reflect locked/unlocked purple
+        if (!this::btnLock.isInitialized || !btnLock.isEnabled) {
+            btnLock.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#BDBDBD"))
+            return
+        }
+        val color = if (isLocked) "#FF00FF" else "#80FF00FF"
+        btnLock.backgroundTintList = ColorStateList.valueOf(Color.parseColor(color))
     }
 
     override fun onResume() {
@@ -130,6 +156,9 @@ class ScanCubeActivity : AppCompatActivity() {
         cubeView.visibility = android.view.View.VISIBLE
         subtitle.text = "Connected"
         applyControlsForCubeLoaded()
+        // Enable lock now that a cube is present
+        setButtonState(btnLock, enabled = true, colorHex = "#80FF00FF")
+        updateLockButtonTint()
         if (SessionStore.isRunning) startTimerTicker() else updateTimerDisplay()
     }
 
@@ -140,6 +169,8 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnSpeed, enabled = false, colorHex = "#BDBDBD")
         // Keep shuffle disabled until a scanned cube is present
         setButtonState(btnShuffle, enabled = false, colorHex = "#BDBDBD")
+        // Keep lock disabled until a cube is scanned/imported
+        setButtonState(btnLock, enabled = false, colorHex = "#BDBDBD")
     }
 
     private fun applyControlsForCubeLoaded() {
@@ -149,6 +180,8 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnSpeed, enabled = true, colorHex = "#3F51B5")
         // Shuffle is now available (red)
         setButtonState(btnShuffle, enabled = true, colorHex = "#D32F2F")
+        // Enable lock when a cube is loaded
+        setButtonState(btnLock, enabled = true, colorHex = "#80FF00FF")
         // If we had a previous running state, apply it (timer handled by caller)
         if (SessionStore.isRunning) setRunningUi(true)
     }

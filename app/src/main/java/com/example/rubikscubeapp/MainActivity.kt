@@ -17,6 +17,8 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
     private var cubeView: CubeGLSurfaceView? = null
     private var btnShuffle: MaterialButton? = null
+    private var btnLock: MaterialButton? = null
+    private var isLocked = false
 
     private val selectDeviceLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -44,6 +46,7 @@ class MainActivity : AppCompatActivity() {
 
         cubeView = findViewById(R.id.cubeBackground)
         btnShuffle = findViewById(R.id.shuffle)
+        btnLock = findViewById(R.id.lock)
 
         // Initialize the cube view with a temporary CSV representing a solved cube state.
         // Order expected by loader: FRONT, RIGHT, BACK, LEFT, UP, DOWN
@@ -71,11 +74,28 @@ class MainActivity : AppCompatActivity() {
             cubeView?.setSolidBlue()
         }
 
+        // Lock button: toggle locked isometric view
+        // Initial tint assumed set in layout; ensure it reflects unlocked state
+        btnLock?.isEnabled = true
+        updateLockButtonTint()
+        btnLock?.setOnClickListener {
+            isLocked = !isLocked
+            cubeView?.setCubeLocked(isLocked)
+            updateLockButtonTint()
+        }
+
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+    }
+
+    private fun updateLockButtonTint() {
+        // Unlocked color: original semi-transparent purple from layout (#80FF00FF)
+        // Locked color: more opaque purple for feedback (#FF00FF)
+        val color = if (isLocked) "#FF00FF" else "#80FF00FF"
+        btnLock?.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor(color))
     }
 
     override fun onResume() {

@@ -6,6 +6,7 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.util.AttributeSet
+import android.view.MotionEvent
 import kotlin.math.abs
 import java.io.File
 import java.io.Reader
@@ -20,6 +21,12 @@ class CubeGLSurfaceView @JvmOverloads constructor(
 ) : GLSurfaceView(context, attrs) {
 
     private val renderer: RubiksRenderer
+    // Mirror locked state here so touch handling can be decided on UI thread
+    private var isLocked = false
+
+    // Touch tracking
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
 
     init {
         setEGLContextClientVersion(2)
@@ -61,6 +68,56 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         requestRender()
     }
 
+    // Public API to lock/unlock the cube into an isometric fixed view. Called from UI thread.
+    fun setCubeLocked(isLocked: Boolean) {
+        this.isLocked = isLocked
+        queueEvent {
+            renderer.setLockedIsometric(isLocked)
+        }
+        requestRender()
+    }
+
+    // Handle touch input: when locked, allow user to drag to rotate view.
+    override fun onTouchEvent(ev: MotionEvent): Boolean {
+        // Only respond to touches when the cube is locked
+        if (!isLocked) return false
+
+        when (ev.action) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchX = ev.x
+                lastTouchY = ev.y
+                // Accessibility: register click
+                performClick()
+                // Start user interaction on GL thread (optional)
+                queueEvent { renderer.startUserInteraction() }
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val x = ev.x
+                val y = ev.y
+                val dx = x - lastTouchX
+                val dy = y - lastTouchY
+                lastTouchX = x
+                lastTouchY = y
+                // Apply deltas on GL thread; sensitivity tuned to degrees per pixel
+                queueEvent { renderer.applyUserDelta(dx, dy) }
+                requestRender()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                queueEvent { renderer.endUserInteraction() }
+                return true
+            }
+        }
+        return super.onTouchEvent(ev)
+    }
+
+    // Accessibility: when overriding onTouchEvent, also override performClick
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
     private class RubiksRenderer : Renderer {
         private val mvpMatrix = FloatArray(16)
         private val projectionMatrix = FloatArray(16)
@@ -70,6 +127,20 @@ class CubeGLSurfaceView @JvmOverloads constructor(
 
         private lateinit var cube: RubiksCube
         private var pendingCsv: String? = null
+
+        // Lock state: when true, use a fixed isometric rotation instead of the passive animation
+        private var locked = false
+        // Isometric angles (in degrees)
+        private val isoAngleX = 35.264f
+        private val isoAngleY = 45f
+
+        // User control state (driven by touch events)
+        private var userControlled = false
+        private var userYaw = 0f   // rotation around Y axis (degrees)
+        private var userPitch = 0f // rotation around X axis (degrees)
+
+        // Sensitivity: degrees per pixel
+        private val sensitivity = 0.4f
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             // Fully transparent clear color (no background)
@@ -93,14 +164,36 @@ class CubeGLSurfaceView @JvmOverloads constructor(
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
             Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 4.8f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
-            Matrix.setRotateM(rotationMatrix, 0, angle, 1f, 1.1f, 0.9f)
+
+            if (locked) {
+                if (userControlled) {
+                    // Build from user yaw (Y) then pitch (X)
+                    val rotY = FloatArray(16)
+                    val rotX = FloatArray(16)
+                    Matrix.setRotateM(rotY, 0, userYaw, 0f, 1f, 0f)
+                    Matrix.setRotateM(rotX, 0, userPitch, 1f, 0f, 0f)
+                    Matrix.multiplyMM(rotationMatrix, 0, rotX, 0, rotY, 0)
+                } else {
+                    // Build rotationMatrix from two rotations: Y then X to produce an isometric perspective
+                    val rotY = FloatArray(16)
+                    val rotX = FloatArray(16)
+                    Matrix.setRotateM(rotY, 0, isoAngleY, 0f, 1f, 0f)
+                    Matrix.setRotateM(rotX, 0, isoAngleX, 1f, 0f, 0f)
+                    Matrix.multiplyMM(rotationMatrix, 0, rotX, 0, rotY, 0)
+                }
+            } else {
+                Matrix.setRotateM(rotationMatrix, 0, angle, 1f, 1.1f, 0.9f)
+            }
+
             Matrix.multiplyMM(mvpMatrix, 0, viewMatrix, 0, rotationMatrix, 0)
             Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, mvpMatrix, 0)
 
             cube.draw(mvpMatrix)
 
-            angle += 0.5f
-            if (abs(angle) > 3600f) angle = angle % 360f
+            if (!locked) {
+                angle += 0.5f
+                if (abs(angle) > 3600f) angle = angle % 360f
+            }
         }
 
         // Called on GL thread to apply a CSV string to the cube state
@@ -125,6 +218,38 @@ class CubeGLSurfaceView @JvmOverloads constructor(
             } else {
                 cube.setCubeFromCsvString(csv)
             }
+        }
+
+        // Called on GL thread to set locked/unlocked state for isometric view
+        fun setLockedIsometric(isLocked: Boolean) {
+            locked = isLocked
+            if (!locked) {
+                // When unlocking, stop user control mode and reset user angles
+                userControlled = false
+                userYaw = 0f
+                userPitch = 0f
+                angle = 0f
+            } else {
+                // Entering locked state: default to isometric view, clear user flag
+                userControlled = false
+            }
+        }
+
+        // User interaction lifecycle and updates (all called on GL thread)
+        fun startUserInteraction() {
+            // Enable user control mode
+            userControlled = true
+        }
+        fun applyUserDelta(dx: Float, dy: Float) {
+            // dx,dy are in pixels; convert to degrees
+            userYaw += dx * sensitivity
+            userPitch += dy * sensitivity
+            // Clamp pitch to avoid flipping
+            if (userPitch > 80f) userPitch = 80f
+            if (userPitch < -80f) userPitch = -80f
+        }
+        fun endUserInteraction() {
+            // Keep userControlled true so the user-set orientation remains until unlocked
         }
     }
 }
