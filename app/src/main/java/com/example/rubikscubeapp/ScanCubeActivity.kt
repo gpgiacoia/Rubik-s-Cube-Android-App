@@ -26,6 +26,7 @@ class ScanCubeActivity : AppCompatActivity() {
     private lateinit var btnStart: MaterialButton
     private lateinit var btnStop: MaterialButton
     private lateinit var btnSpeed: MaterialButton
+    private lateinit var btnShuffle: MaterialButton
     private lateinit var timerText: TextView
 
     private val uiHandler = Handler(Looper.getMainLooper())
@@ -49,7 +50,7 @@ class ScanCubeActivity : AppCompatActivity() {
         setContentView(R.layout.activity_scan_cube)
 
         // Back button behaves like DeviceListActivity
-        findViewById<MaterialButton>(R.id.Back)?.setOnClickListener {
+        findViewById<MaterialButton>(R.id.back)?.setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
 
@@ -59,6 +60,7 @@ class ScanCubeActivity : AppCompatActivity() {
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
         btnSpeed = findViewById(R.id.btnSpeed)
+        btnShuffle = findViewById(R.id.shuffle)
         timerText = findViewById(R.id.timerText)
 
         // Initial states based on session (if cube already loaded this run)
@@ -74,6 +76,13 @@ class ScanCubeActivity : AppCompatActivity() {
         btnStart.setOnClickListener { onStartPressed() }
         btnStop.setOnClickListener { onStopPressed() }
         btnSpeed.setOnClickListener { showSpeedMenu() }
+
+        // Wire shuffle button: only active when a cube has been loaded/scanned
+        btnShuffle.setOnClickListener {
+            if (!btnShuffle.isEnabled) return@setOnClickListener
+            // Only shuffle the currently-loaded cube; do not override a missing scanned cube
+            cubeView.setSolidBlue()
+        }
 
         // Restore speed label if set in this run
         SessionStore.speedLabel?.let { btnSpeed.text = it }
@@ -129,6 +138,8 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnStart, enabled = false, colorHex = "#BDBDBD")
         setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
         setButtonState(btnSpeed, enabled = false, colorHex = "#BDBDBD")
+        // Keep shuffle disabled until a scanned cube is present
+        setButtonState(btnShuffle, enabled = false, colorHex = "#BDBDBD")
     }
 
     private fun applyControlsForCubeLoaded() {
@@ -136,6 +147,8 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnStart, enabled = true, colorHex = "#D32F2F")
         setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
         setButtonState(btnSpeed, enabled = true, colorHex = "#3F51B5")
+        // Shuffle is now available (red)
+        setButtonState(btnShuffle, enabled = true, colorHex = "#D32F2F")
         // If we had a previous running state, apply it (timer handled by caller)
         if (SessionStore.isRunning) setRunningUi(true)
     }

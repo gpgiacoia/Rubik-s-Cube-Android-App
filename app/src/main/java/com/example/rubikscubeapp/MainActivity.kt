@@ -11,10 +11,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.rubikscubeapp.gl.CubeGLSurfaceView
+import com.google.android.material.button.MaterialButton
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
     private var cubeView: CubeGLSurfaceView? = null
+    private var btnShuffle: MaterialButton? = null
 
     private val selectDeviceLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -41,6 +43,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         cubeView = findViewById(R.id.cubeBackground)
+        btnShuffle = findViewById(R.id.shuffle)
 
         // Initialize the cube view with a temporary CSV representing a solved cube state.
         // Order expected by loader: FRONT, RIGHT, BACK, LEFT, UP, DOWN
@@ -61,6 +64,13 @@ class MainActivity : AppCompatActivity() {
             // Ignore init failure; view will show its default state
         }
 
+        // Home-screen shuffle: always enabled and always performs the solid-blue action
+        btnShuffle?.isEnabled = true
+        btnShuffle?.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#D32F2F"))
+        btnShuffle?.setOnClickListener {
+            cubeView?.setSolidBlue()
+        }
+
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
@@ -71,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         cubeView?.onResume()
+        // keep shuffle enabled on home screen regardless of session
     }
 
     override fun onPause() {

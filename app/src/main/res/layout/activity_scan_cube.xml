@@ -15,29 +15,52 @@
         app:layout_constraintGuide_percent="0.06" />
 
     <!-- Back button styled like activity_device_list -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/Back"
-        android:layout_width="100sp"
-        android:layout_height="55sp"
-        android:text="Back"
-        android:textColor="#FFFFFFFF"
-        android:textSize="17sp"
-        app:fontFamily="@font/irish_grover"
-        app:backgroundTint="#D32F2F"
-        app:cornerRadius="16dp"
-        app:strokeColor="#BDBDBD"
-        app:strokeWidth="1dp"
-        android:elevation="6dp"
-        app:rippleColor="#80FFFFFF"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.064"
-        app:layout_constraintVertical_bias="0.024"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintWidth_percent="0.8" />
 
     <!-- Title -->
+
+    <com.google.android.material.button.MaterialButton
+            android:id="@+id/shuffle"
+            android:layout_width="100sp"
+            android:layout_height="55sp"
+            android:text="Shuffle"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp"
+            app:fontFamily="@font/irish_grover"
+            app:backgroundTint="#D32F2F"
+            app:cornerRadius="16dp"
+            app:strokeColor="#BDBDBD"
+            app:strokeWidth="1dp"
+            android:elevation="6dp"
+            app:rippleColor="#80FFFFFF"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.948"
+            app:layout_constraintVertical_bias="0.022"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintWidth_percent="0.8" />
+
+    <com.google.android.material.button.MaterialButton
+            android:id="@+id/back"
+            android:layout_width="100sp"
+            android:layout_height="55sp"
+            android:text="Back"
+            android:textColor="#FFFFFFFF"
+            android:textSize="17sp"
+            app:fontFamily="@font/irish_grover"
+            app:backgroundTint="#D32F2F"
+            app:cornerRadius="16dp"
+            app:strokeColor="#BDBDBD"
+            app:strokeWidth="1dp"
+            android:elevation="6dp"
+            app:rippleColor="#80FFFFFF"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.051"
+            app:layout_constraintVertical_bias="0.023"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintWidth_percent="0.8" />
 
     <TextView
         android:id="@+id/title"

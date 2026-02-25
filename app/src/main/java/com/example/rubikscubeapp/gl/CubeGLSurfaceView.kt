@@ -52,6 +52,15 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         loadCubeFromCsvString(text)
     }
 
+    // New public helper: set the entire cube to solid blue (color index 5).
+    // This queues the change on the GL thread and requests a render.
+    fun setSolidBlue() {
+        queueEvent {
+            renderer.setSolidColor(5)
+        }
+        requestRender()
+    }
+
     private class RubiksRenderer : Renderer {
         private val mvpMatrix = FloatArray(16)
         private val projectionMatrix = FloatArray(16)
@@ -99,6 +108,20 @@ class CubeGLSurfaceView @JvmOverloads constructor(
             return if (!::cube.isInitialized) {
                 pendingCsv = csv
                 false
+            } else {
+                cube.setCubeFromCsvString(csv)
+            }
+        }
+
+        // Called on GL thread to set every sticker to the given color index (0..5).
+        fun setSolidColor(colorIndex: Int) {
+            // Build CSV representing 6 rows of 9 identical values each
+            val line = (0 until 9).joinToString(",") { colorIndex.toString() }
+            val csv = buildString {
+                repeat(6) { appendLine(line) }
+            }
+            if (!::cube.isInitialized) {
+                pendingCsv = csv
             } else {
                 cube.setCubeFromCsvString(csv)
             }
