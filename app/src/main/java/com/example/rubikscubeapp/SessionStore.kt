@@ -17,4 +17,8 @@ object SessionStore {
     // Timer state (milliseconds)
     var elapsedMs: Long = 0L
     var runningSinceMs: Long? = null
+
+    // Remember last connected device IP (optional)
+    var deviceIp: String? = null
+    var devicePort: Int? = null
 }

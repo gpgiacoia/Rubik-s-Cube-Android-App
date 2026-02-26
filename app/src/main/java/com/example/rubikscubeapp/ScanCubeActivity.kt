@@ -17,6 +17,11 @@ import android.widget.TextView
 import android.widget.Toast
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.util.concurrent.TimeUnit
 
 class ScanCubeActivity : AppCompatActivity() {
 
@@ -79,8 +84,8 @@ class ScanCubeActivity : AppCompatActivity() {
             updateTimerDisplay()
         }
 
-        // Wire actions
-        scanBtn.setOnClickListener { pickCsv.launch(arrayOf("text/csv", "text/*")) }
+        // Wire actions: instead of launching file picker, wire scan button to query Raspberry Pi
+        scanBtn.setOnClickListener { performPiScan() }
         btnStart.setOnClickListener { onStartPressed() }
         btnStop.setOnClickListener { onStopPressed() }
         btnSpeed.setOnClickListener { showSpeedMenu() }
@@ -108,6 +113,133 @@ class ScanCubeActivity : AppCompatActivity() {
             setRunningUi(running = true)
             startTimerTicker()
         }
+    }
+
+    private fun performPiScan() {
+        // Use stored SessionStore.deviceIp/port or fallback to common defaults
+        val ip = SessionStore.deviceIp ?: "192.168.4.1"
+        val port = SessionStore.devicePort ?: 9000
+
+        // Provide immediate UI feedback
+        Toast.makeText(this, "Connecting to Pi $ip:$port…", Toast.LENGTH_SHORT).show()
+
+        GlobalScope.launch {
+            var error: String? = null
+            var state54: String? = null
+            try {
+                val socket = Socket()
+                socket.connect(InetSocketAddress(ip, port), TimeUnit.SECONDS.toMillis(5).toInt())
+                val reader = socket.getInputStream().bufferedReader(Charsets.UTF_8)
+                val writer = socket.getOutputStream().bufferedWriter(Charsets.UTF_8)
+
+                // Handshake
+                writer.write("${"RPI_HELLO"}")
+                writer.newLine()
+                writer.flush()
+                val reply = reader.readLine()
+                if (reply == null) throw Exception("No handshake reply")
+                val r = reply.trim().uppercase()
+                if (!(r.contains("RPI_ACK") || r.contains("ACK") || r.contains("OK"))) {
+                    // allow server to indicate RUNNING state too
+                    if (r.contains("RUNNING")) {
+                        // continue — server accepted but busy
+                    } else {
+                        throw Exception("Unexpected handshake reply: $reply")
+                    }
+                }
+
+                // Send START_SCAN and wait for STATE
+                writer.write("START_SCAN")
+                writer.newLine()
+                writer.flush()
+
+                // read lines until STATE: prefix
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.trim().isEmpty()) continue
+                    if (line.startsWith("READY")) {
+                        runOnUiThread { Toast.makeText(this@ScanCubeActivity, "Pi ready, scanning…", Toast.LENGTH_SHORT).show() }
+                        continue
+                    }
+                    if (line.startsWith("STATE:")) {
+                        val payload = line.removePrefix("STATE:").trim()
+                        if (payload.equals("FAILED", ignoreCase = true) || payload.length != 54) {
+                            // collect extra diagnostic lines
+                            val sb = StringBuilder()
+                            if (payload.isNotEmpty()) sb.append(payload).append("\n")
+                            try {
+                                while (true) {
+                                    val extra = reader.readLine() ?: break
+                                    if (extra.trim().isEmpty()) continue
+                                    sb.append(extra).append("\n")
+                                }
+                            } catch (_: Exception) {}
+                            throw Exception("Scan failed: ${sb.toString().trim()}")
+                        } else {
+                            state54 = payload
+                        }
+                        break
+                    }
+                }
+                try { socket.close() } catch (_: Exception) {}
+
+            } catch (e: Exception) {
+                error = e.localizedMessage ?: e.toString()
+            }
+
+            runOnUiThread {
+                if (error != null) {
+                    Toast.makeText(this@ScanCubeActivity, "Scan error: $error", Toast.LENGTH_LONG).show()
+                } else if (state54 != null) {
+                    // Convert 54-letter sequence into CSV format expected by the app and display
+                    val csv = convertState54ToCsv(state54!!)
+                    if (csv == null) {
+                        Toast.makeText(this@ScanCubeActivity, "Invalid STATE from Pi: $state54", Toast.LENGTH_LONG).show()
+                    } else {
+                        SessionStore.cubeCsv = csv
+                        writeTempCsv(csv)
+                        showCube(csv)
+                        Toast.makeText(this@ScanCubeActivity, "Scan complete", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(this@ScanCubeActivity, "No STATE received", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    // Map color letters to app color indices: 0 white (W), 1 yellow (Y), 2 green (G),
+    // 3 red (R), 4 orange (O), 5 blue (B)
+    private fun letterToIndex(ch: Char): Int? {
+        return when (ch.uppercaseChar()) {
+            'W' -> 0
+            'Y' -> 1
+            'G' -> 2
+            'R' -> 3
+            'O' -> 4
+            'B' -> 5
+            else -> null
+        }
+    }
+
+    // Convert a 54-letter state (face order assumed: FRONT, RIGHT, BACK, LEFT, UP, DOWN)
+    // into CSV with 6 lines of 9 comma-separated indices each
+    private fun convertState54ToCsv(state: String): String? {
+        if (state.length != 54) return null
+        val indices = IntArray(54)
+        for (i in state.indices) {
+            val idx = letterToIndex(state[i]) ?: return null
+            indices[i] = idx
+        }
+        val sb = StringBuilder()
+        var p = 0
+        repeat(6) {
+            val line = (0 until 9).joinToString(",") { j -> indices[p + j].toString() }
+            sb.append(line)
+            if (it < 5) sb.append('\n')
+            p += 9
+        }
+        return sb.toString()
     }
 
     private fun updateLockButtonTint() {
