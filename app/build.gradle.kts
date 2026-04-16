@@ -30,8 +30,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
 }
 
@@ -42,6 +44,9 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+
+    // Add this line for Lifecycle and Coroutines support
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 
     // Ensure Google Fonts provider cert arrays are available
     implementation("com.google.android.gms:play-services-base:18.5.0")

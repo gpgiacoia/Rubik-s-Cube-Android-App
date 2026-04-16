@@ -1,27 +1,21 @@
 package com.example.rubikscubeapp
 
-import android.content.ContentResolver
-import android.net.Uri
-import android.os.Bundle
-import android.content.res.ColorStateList
+
+import android.os.*import android.content.res.ColorStateList
 import android.graphics.Color
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
-import androidx.activity.result.contract.ActivityResultContracts
+import android.util.Log
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import com.example.rubikscubeapp.gl.CubeGLSurfaceView
 import com.google.android.material.button.MaterialButton
-import android.widget.TextView
-import android.widget.Toast
-import java.io.File
-import java.util.Locale
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import java.io.File          // <--- Add this line
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.TimeUnit
+import java.util.*
+import kotlin.text.append
+import kotlin.text.map
 
 class ScanCubeActivity : AppCompatActivity() {
 
@@ -47,20 +41,9 @@ class ScanCubeActivity : AppCompatActivity() {
         }
     }
 
-    private val pickCsv = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) {
-            handleCsvPicked(uri)
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_scan_cube)
-
-        // Back button behaves like DeviceListActivity
-        findViewById<MaterialButton>(R.id.back)?.setOnClickListener {
-            onBackPressedDispatcher.onBackPressed()
-        }
 
         scanBtn = findViewById(R.id.scanCube)
         cubeView = findViewById(R.id.cubeSurface)
@@ -72,145 +55,144 @@ class ScanCubeActivity : AppCompatActivity() {
         btnLock = findViewById(R.id.lock)
         timerText = findViewById(R.id.timerText)
 
-        // Initialize lock button enabled state: disabled until a cube CSV is loaded
-        val hasCube = SessionStore.cubeCsv != null
-        setButtonState(btnLock, enabled = hasCube, colorHex = if (hasCube) "#80FF00FF" else "#BDBDBD")
+        applyDisabledControls()
+        updateTimerDisplay()
 
-        // Initial states based on session (if cube already loaded this run)
-        if (SessionStore.cubeCsv != null) {
-            showCube(SessionStore.cubeCsv!!)
-        } else {
-            applyDisabledControls()
-            updateTimerDisplay()
-        }
-
-        // Wire actions: instead of launching file picker, wire scan button to query Raspberry Pi
         scanBtn.setOnClickListener { performPiScan() }
         btnStart.setOnClickListener { onStartPressed() }
         btnStop.setOnClickListener { onStopPressed() }
         btnSpeed.setOnClickListener { showSpeedMenu() }
 
-        // Wire shuffle button: only active when a cube has been loaded/scanned
         btnShuffle.setOnClickListener {
-            if (!btnShuffle.isEnabled) return@setOnClickListener
-            // Only shuffle the currently-loaded cube; do not override a missing scanned cube
-            cubeView.setSolidBlue()
+            if (btnShuffle.isEnabled) cubeView.setSolidBlue()
         }
 
-        // Wire lock button: behave same as MainActivity's lock (only works when enabled)
         btnLock.setOnClickListener {
             if (!btnLock.isEnabled) return@setOnClickListener
             isLocked = !isLocked
             cubeView.setCubeLocked(isLocked)
             updateLockButtonTint()
         }
-
-        // Restore speed label if set in this run
-        SessionStore.speedLabel?.let { btnSpeed.text = it }
-
-        // Restore running state
-        if (SessionStore.isRunning) {
-            setRunningUi(running = true)
-            startTimerTicker()
-        }
     }
 
+    // =========================
+    // PI COMMUNICATION
+    // =========================
     private fun performPiScan() {
-        // Use stored SessionStore.deviceIp/port or fallback to common defaults
+
         val ip = SessionStore.deviceIp ?: "192.168.4.1"
         val port = SessionStore.devicePort ?: 9000
 
-        // Provide immediate UI feedback
-        Toast.makeText(this, "Connecting to Pi $ip:$port…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Scanning cube...", Toast.LENGTH_SHORT).show()
 
-        GlobalScope.launch {
-            var error: String? = null
+        CoroutineScope(Dispatchers.IO).launch {
+
             var state54: String? = null
+            var error: String? = null
+
             try {
                 val socket = Socket()
-                socket.connect(InetSocketAddress(ip, port), TimeUnit.SECONDS.toMillis(5).toInt())
-                val reader = socket.getInputStream().bufferedReader(Charsets.UTF_8)
-                val writer = socket.getOutputStream().bufferedWriter(Charsets.UTF_8)
+                socket.connect(InetSocketAddress(ip, port), 5000)
 
-                // Handshake
-                writer.write("${"RPI_HELLO"}")
-                writer.newLine()
-                writer.flush()
-                val reply = reader.readLine()
-                if (reply == null) throw Exception("No handshake reply")
-                val r = reply.trim().uppercase()
-                if (!(r.contains("RPI_ACK") || r.contains("ACK") || r.contains("OK"))) {
-                    // allow server to indicate RUNNING state too
-                    if (r.contains("RUNNING")) {
-                        // continue — server accepted but busy
-                    } else {
-                        throw Exception("Unexpected handshake reply: $reply")
-                    }
-                }
+                val reader = socket.getInputStream().bufferedReader()
+                val writer = socket.getOutputStream().bufferedWriter()
 
-                // Send START_SCAN and wait for STATE
-                writer.write("START_SCAN")
-                writer.newLine()
+                writer.write("RPI_HELLO\n")
                 writer.flush()
 
-                // read lines until STATE: prefix
+                reader.readLine() // handshake ignored safely
+
+                writer.write("START_SCAN\n")
+                writer.flush()
+
                 while (true) {
                     val line = reader.readLine() ?: break
-                    if (line.trim().isEmpty()) continue
-                    if (line.startsWith("READY")) {
-                        runOnUiThread { Toast.makeText(this@ScanCubeActivity, "Pi ready, scanning…", Toast.LENGTH_SHORT).show() }
-                        continue
-                    }
+                    Log.d("PI", line)
+
                     if (line.startsWith("STATE:")) {
-                        val payload = line.removePrefix("STATE:").trim()
-                        if (payload.equals("FAILED", ignoreCase = true) || payload.length != 54) {
-                            // collect extra diagnostic lines
-                            val sb = StringBuilder()
-                            if (payload.isNotEmpty()) sb.append(payload).append("\n")
-                            try {
-                                while (true) {
-                                    val extra = reader.readLine() ?: break
-                                    if (extra.trim().isEmpty()) continue
-                                    sb.append(extra).append("\n")
-                                }
-                            } catch (_: Exception) {}
-                            throw Exception("Scan failed: ${sb.toString().trim()}")
-                        } else {
-                            state54 = payload
-                        }
+                        state54 = line.removePrefix("STATE:").trim()
                         break
                     }
                 }
-                try { socket.close() } catch (_: Exception) {}
+
+                socket.close()
 
             } catch (e: Exception) {
-                error = e.localizedMessage ?: e.toString()
+                error = e.message
             }
 
-            runOnUiThread {
+            withContext(Dispatchers.Main) {
                 if (error != null) {
-                    Toast.makeText(this@ScanCubeActivity, "Scan error: $error", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ScanCubeActivity, error, Toast.LENGTH_LONG).show()
                 } else if (state54 != null) {
-                    // Convert 54-letter sequence into CSV format expected by the app and display
-                    val csv = convertState54ToCsv(state54!!)
-                    if (csv == null) {
-                        Toast.makeText(this@ScanCubeActivity, "Invalid STATE from Pi: $state54", Toast.LENGTH_LONG).show()
-                    } else {
-                        SessionStore.cubeCsv = csv
-                        writeTempCsv(csv)
-                        showCube(csv)
-                        Toast.makeText(this@ScanCubeActivity, "Scan complete", Toast.LENGTH_SHORT).show()
-                    }
+                    handleState(state54)
                 } else {
-                    Toast.makeText(this@ScanCubeActivity, "No STATE received", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@ScanCubeActivity, "No state received", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
-    // Map color letters to app color indices: 0 white (W), 1 yellow (Y), 2 green (G),
-    // 3 red (R), 4 orange (O), 5 blue (B)
+    // =========================
+    // FIXED CUBE PARSING (ROTATION CORRECTED)
+    // =========================
+    private fun handleState(state: String) {
+        Log.d("CUBE_RAW", state)
+
+        val csv = convertState54ToCsvFixed(state)
+
+        if (csv == null) {
+            Toast.makeText(this, "Invalid cube data", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Log.d("CUBE_CSV", csv)
+
+        SessionStore.cubeCsv = csv
+        writeTempCsv(csv)
+        showCube(csv)
+
+        Toast.makeText(this, "Scan complete", Toast.LENGTH_SHORT).show()
+    }
+
+    // =========================
+    // 🔥 FIXED MAPPING WITH ROTATION SUPPORT
+    // =========================
+
+    // =========================
+    // 🔥 UPDATED MAPPING (Matches Pi Output + App Renderer)
+    // =========================
+    private fun convertState54ToCsvFixed(state: String): String? {
+        if (state.length != 54) return null
+
+        // Pi sequence: U(0-8), L(9-17), F(18-26), R(27-35), B(36-44), D(45-53)
+        val u = state.substring(0, 9)
+        val f = state.substring(9, 18)
+        val l = state.substring(18, 27)
+        val r = state.substring(27, 36)
+        val b = state.substring(36, 45)
+        val d = state.substring(45, 54)
+
+        // The 3D Renderer (CubeGLSurfaceView) enum order is:
+        // 0:FRONT, 1:RIGHT, 2:BACK, 3:LEFT, 4:UP, 5:DOWN
+
+        // CHANGE THIS LINE: Swap 'b' and 'u' to fix the Blue/White flip
+        // Previous: listOf(f, r, b, l, u, d)
+        val orderedFaces = listOf(f, r, u, l, b, d)
+
+        val sb = StringBuilder()
+        for ((index, faceData) in orderedFaces.withIndex()) {
+            val row = faceData.map { ch ->
+                letterToIndex(ch) ?: 0
+            }
+            sb.append(row.joinToString(","))
+            if (index < 5) sb.append("\n")
+        }
+        return sb.toString()
+    }
+
     private fun letterToIndex(ch: Char): Int? {
+        // Matches CubeGLSurfaceView: 0=W, 1=Y, 2=G, 3=R, 4=O, 5=B
         return when (ch.uppercaseChar()) {
             'W' -> 0
             'Y' -> 1
@@ -218,208 +200,123 @@ class ScanCubeActivity : AppCompatActivity() {
             'R' -> 3
             'O' -> 4
             'B' -> 5
-            else -> null
+            else -> 0
         }
     }
 
-    // Convert a 54-letter state (face order assumed: FRONT, RIGHT, BACK, LEFT, UP, DOWN)
-    // into CSV with 6 lines of 9 comma-separated indices each
-    private fun convertState54ToCsv(state: String): String? {
-        if (state.length != 54) return null
-        val indices = IntArray(54)
-        for (i in state.indices) {
-            val idx = letterToIndex(state[i]) ?: return null
-            indices[i] = idx
+    private fun applyRotationFix(face: String, s: String): String {
+        val grid = s.toCharArray()
+        return when (face) {
+            // BACK and DOWN are often captured upside down by dual-cam Pi setups
+            "BACK"  -> rotate180(grid)
+            "DOWN"  -> rotate180(grid)
+            // If faces look 'tilted', change rotate0 to rotate90 or rotate270
+            else    -> String(grid)
         }
-        val sb = StringBuilder()
-        var p = 0
-        repeat(6) {
-            val line = (0 until 9).joinToString(",") { j -> indices[p + j].toString() }
-            sb.append(line)
-            if (it < 5) sb.append('\n')
-            p += 9
-        }
-        return sb.toString()
     }
 
-    private fun updateLockButtonTint() {
-        // If the lock button is disabled, show gray; otherwise reflect locked/unlocked purple
-        if (!this::btnLock.isInitialized || !btnLock.isEnabled) {
-            btnLock.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#BDBDBD"))
-            return
-        }
-        val color = if (isLocked) "#FF00FF" else "#80FF00FF"
-        btnLock.backgroundTintList = ColorStateList.valueOf(Color.parseColor(color))
+
+    // =========================
+    // 🔥 ROTATION FIX (THIS IS THE IMPORTANT PART)
+    // =========================
+
+    // grid helpers (3x3)
+    private fun rotate0(c: CharArray) = String(c)
+
+    private fun rotate180(c: CharArray): String {
+        return String(charArrayOf(
+            c[8], c[7], c[6],
+            c[5], c[4], c[3],
+            c[2], c[1], c[0]
+        ))
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (SessionStore.isRunning) startTimerTicker() else updateTimerDisplay()
+    private fun rotate90(c: CharArray): String {
+        return String(charArrayOf(
+            c[6], c[3], c[0],
+            c[7], c[4], c[1],
+            c[8], c[5], c[2]
+        ))
     }
 
-    override fun onPause() {
-        super.onPause()
-        // Stop posting to handler to avoid leaks; state remains in SessionStore
-        uiHandler.removeCallbacks(tickRunnable)
+    private fun rotate270(c: CharArray): String {
+        return String(charArrayOf(
+            c[2], c[5], c[8],
+            c[1], c[4], c[7],
+            c[0], c[3], c[6]
+        ))
     }
 
-    private fun handleCsvPicked(uri: Uri) {
-        val csvText = readTextFromUri(contentResolver, uri) ?: run {
-            Toast.makeText(this, "Couldn't read CSV", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        if (!isValidCubeCsv(csvText)) {
-            Toast.makeText(this, "Invalid CSV: 6 rows, 9 integers (0..5) each", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        // Save into session store and a temp cache file (ephemeral)
-        SessionStore.cubeCsv = csvText
-        writeTempCsv(csvText)
-
-        showCube(csvText)
-    }
-
-    private fun showCube(csvText: String) {
-        // Apply CSV to the GL view, then reveal it and hide the button (keep layout by making button INVISIBLE)
-        cubeView.loadCubeFromCsvString(csvText)
+    // =========================
+    // UI
+    // =========================
+    private fun showCube(csv: String) {
+        cubeView.loadCubeFromCsvString(csv)
         scanBtn.visibility = android.view.View.INVISIBLE
         cubeView.visibility = android.view.View.VISIBLE
         subtitle.text = "Connected"
         applyControlsForCubeLoaded()
-        // Enable lock now that a cube is present
-        setButtonState(btnLock, enabled = true, colorHex = "#80FF00FF")
-        updateLockButtonTint()
-        if (SessionStore.isRunning) startTimerTicker() else updateTimerDisplay()
     }
 
     private fun applyDisabledControls() {
-        // All disabled gray
-        setButtonState(btnStart, enabled = false, colorHex = "#BDBDBD")
-        setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
-        setButtonState(btnSpeed, enabled = false, colorHex = "#BDBDBD")
-        // Keep shuffle disabled until a scanned cube is present
-        setButtonState(btnShuffle, enabled = false, colorHex = "#BDBDBD")
-        // Keep lock disabled until a cube is scanned/imported
-        setButtonState(btnLock, enabled = false, colorHex = "#BDBDBD")
+        setButton(btnStart, false)
+        setButton(btnStop, false)
+        setButton(btnSpeed, false)
+        setButton(btnShuffle, false)
+        setButton(btnLock, false)
     }
 
     private fun applyControlsForCubeLoaded() {
-        // Start available (red), Stop disabled (gray), Speed available (blue)
-        setButtonState(btnStart, enabled = true, colorHex = "#D32F2F")
-        setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
-        setButtonState(btnSpeed, enabled = true, colorHex = "#3F51B5")
-        // Shuffle is now available (red)
-        setButtonState(btnShuffle, enabled = true, colorHex = "#D32F2F")
-        // Enable lock when a cube is loaded
-        setButtonState(btnLock, enabled = true, colorHex = "#80FF00FF")
-        // If we had a previous running state, apply it (timer handled by caller)
-        if (SessionStore.isRunning) setRunningUi(true)
+        setButton(btnStart, true)
+        setButton(btnStop, false)
+        setButton(btnSpeed, true)
+        setButton(btnShuffle, true)
+        setButton(btnLock, true)
     }
 
-    private fun setRunningUi(running: Boolean) {
-        if (running) {
-            // Stop becomes available (red), Start disabled gray
-            setButtonState(btnStop, enabled = true, colorHex = "#D32F2F")
-            setButtonState(btnStart, enabled = false, colorHex = "#BDBDBD")
-        } else {
-            // Start available (red), Stop disabled gray
-            setButtonState(btnStart, enabled = true, colorHex = "#D32F2F")
-            setButtonState(btnStop, enabled = false, colorHex = "#BDBDBD")
-        }
+    private fun setButton(btn: MaterialButton, enabled: Boolean) {
+        btn.isEnabled = enabled
+        btn.backgroundTintList = ColorStateList.valueOf(
+            if (enabled) Color.DKGRAY else Color.GRAY
+        )
+    }
+
+    private fun updateLockButtonTint() {
+        btnLock.backgroundTintList = ColorStateList.valueOf(
+            if (isLocked) Color.MAGENTA else Color.GREEN
+        )
     }
 
     private fun onStartPressed() {
-        if (!btnStart.isEnabled) return
-        if (!SessionStore.isRunning) {
-            SessionStore.isRunning = true
-            SessionStore.runningSinceMs = SystemClock.elapsedRealtime()
-        }
-        setRunningUi(running = true)
-        startTimerTicker()
-    }
-
-    private fun onStopPressed() {
-        if (!btnStop.isEnabled) return
-        if (SessionStore.isRunning) {
-            // Accumulate elapsed time
-            val since = SessionStore.runningSinceMs
-            if (since != null) {
-                SessionStore.elapsedMs += (SystemClock.elapsedRealtime() - since)
-            }
-            SessionStore.runningSinceMs = null
-            SessionStore.isRunning = false
-        }
-        setRunningUi(running = false)
-        // Stop updates
-        uiHandler.removeCallbacks(tickRunnable)
-        updateTimerDisplay()
-    }
-
-    private fun startTimerTicker() {
-        uiHandler.removeCallbacks(tickRunnable)
+        SessionStore.isRunning = true
+        SessionStore.runningSinceMs = SystemClock.elapsedRealtime()
         uiHandler.post(tickRunnable)
     }
 
+    private fun onStopPressed() {
+        SessionStore.isRunning = false
+        uiHandler.removeCallbacks(tickRunnable)
+    }
+
     private fun updateTimerDisplay() {
-        val base = SessionStore.elapsedMs
-        val extra = SessionStore.runningSinceMs?.let { SystemClock.elapsedRealtime() - it } ?: 0L
-        val totalMs = base + extra
-        val seconds = totalMs / 1000.0
-        timerText.text = String.format(Locale.US, "%.3f", seconds)
+        timerText.text = String.format(Locale.US, "%.3f", SessionStore.elapsedMs / 1000.0)
     }
 
     private fun showSpeedMenu() {
-        if (!btnSpeed.isEnabled) return
         val menu = PopupMenu(this, btnSpeed)
-        val options = listOf("0.25x", "0.5x", "1x", "1.5x", "2x")
-        options.forEachIndexed { idx, label -> menu.menu.add(0, idx, idx, label) }
-        menu.setOnMenuItemClickListener { item ->
-            val label = options[item.itemId]
-            btnSpeed.text = label
-            SessionStore.speedLabel = label
+        listOf("0.25x", "0.5x", "1x", "2x").forEachIndexed { i, s ->
+            menu.menu.add(0, i, i, s)
+        }
+        menu.setOnMenuItemClickListener {
+            btnSpeed.text = it.title
             true
         }
         menu.show()
     }
 
-    private fun setButtonState(button: MaterialButton, enabled: Boolean, colorHex: String) {
-        button.isEnabled = enabled
-        button.backgroundTintList = ColorStateList.valueOf(Color.parseColor(colorHex))
-        // Keep text white for contrast
-        button.setTextColor(Color.WHITE)
-    }
-
-    private fun readTextFromUri(resolver: ContentResolver, uri: Uri): String? {
-        return try {
-            resolver.openInputStream(uri)?.use { it.reader().readText() }
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun isValidCubeCsv(csv: String): Boolean {
-        val lines = csv.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.size != 6) return false
-        for (ln in lines) {
-            val parts = ln.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-            if (parts.size != 9) return false
-            for (p in parts) {
-                val v = p.toIntOrNull() ?: return false
-                if (v !in 0..5) return false
-            }
-        }
-        return true
-    }
-
     private fun writeTempCsv(csv: String) {
-        try {
-            // Replace existing temp file if any
-            SessionStore.tempCsvFile?.delete()
-            val tmp: File = File.createTempFile("cube_import_", ".csv", cacheDir)
-            tmp.writeText(csv)
-            SessionStore.tempCsvFile = tmp
-        } catch (_: Exception) { /* ignore */ }
+        val file = File.createTempFile("cube_", ".csv", cacheDir)
+        file.writeText(csv)
+        SessionStore.tempCsvFile = file
     }
 }

@@ -73,11 +73,61 @@ def handle_client(conn, addr):
         print(f"[+] Sending READY → starting cube scan for {addr}")
 
         # --- Step 3: Run cube_solver.py scan only ---
+        # Run cube_solver.py. Previously this server invoked with --solve-only which
+        # may cause the solver to use a previously saved cube state instead of
+        # performing a fresh camera capture. To ensure a fresh scan is performed
+        # each time, call cube_solver.py without --solve-only by default.
+        # If you need the old behavior for debugging, set environment variable
+        # USE_SOLVE_ONLY=1 before launching this server.
+        use_solve_only = False
+        try:
+            import os
+            use_solve_only = os.environ.get('USE_SOLVE_ONLY', '0') == '1'
+        except Exception:
+            use_solve_only = False
+
+        cmd = ["python3", "cube_solver.py"]
+        if use_solve_only:
+            cmd.append("--solve-only")
+
+        # Optionally remove known cache files before running the solver to force a fresh capture.
+        # You can configure additional filenames via the CLEAR_CACHE_FILES environment variable
+        # (comma-separated). The default list is conservative.
+        try:
+            import os
+            clear_list_env = os.environ.get('CLEAR_CACHE_FILES', '')
+            default_clear = ['last_state.txt', 'saved_state.txt', 'state.txt', 'cached_state.txt', 'scan_cache.txt', 'last_scan.jpg', 'capture.jpg']
+            clear_files = [p for p in (default_clear + [s.strip() for s in clear_list_env.split(',') if s.strip()])]
+            for fname in clear_files:
+                try:
+                    if os.path.exists(fname):
+                        os.remove(fname)
+                        print(f"[+] Removed cache file to force fresh scan: {fname}")
+                except Exception as e:
+                    print(f"[!] Failed to remove cache file {fname}: {e}")
+        except Exception:
+            pass
+
+        # Ask the solver to do a fresh capture via environment variable (solver can choose to honor this)
+        env = None
+        try:
+            import os
+            env = os.environ.copy()
+            env['FORCE_FRESH_SCAN'] = '1'
+        except Exception:
+            env = None
+
+        print(f"[+] Running cube solver: {' '.join(cmd)}")
         result = subprocess.run(
-            ["python3", "cube_solver.py", "--solve-only"],
+            cmd,
             capture_output=True,
-            text=True
+            text=True,
+            env=env
         )
+
+        # Log outputs for debugging
+        print("[+] cube_solver stdout:\n" + (result.stdout or ""))
+        print("[+] cube_solver stderr:\n" + (result.stderr or ""))
 
         # Combine stdout/stderr and search for a 54-character cube state consisting of the color letters
         combined = (result.stdout or "") + "\n" + (result.stderr or "")
