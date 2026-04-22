@@ -78,10 +78,11 @@ class ScanCubeActivity : AppCompatActivity() {
         }
 
         btnBack.setOnClickListener {
-            finish() // Return to MainActivity
+            Log.d("ScanCubeActivity", "Back button clicked")
+            finish() 
         }
 
-        // Just in case any view is overlapping the back button
+        // Force Back button to front to ensure it's clickable
         btnBack.bringToFront()
     }
 
@@ -147,16 +148,28 @@ class ScanCubeActivity : AppCompatActivity() {
         Toast.makeText(this, "Scan complete", Toast.LENGTH_SHORT).show()
     }
 
+    // =========================================================================
+    // 🔥 FIXED MAPPING (Pi Output -> Renderer Order + Face Rotations)
+    // =========================================================================
     private fun convertState54ToCsvFixed(state: String): String? {
         if (state.length != 54) return null
 
-        val u = state.substring(0, 9)   // White (UP)
+        // 1. Extract substrings from Pi output
+        var u = state.substring(0, 9)   // White (UP)
         val l = state.substring(9, 18)  // Orange (LEFT)
         val b = state.substring(18, 27) // Blue (BACK)
         val f = state.substring(27, 36) // Green (FRONT)
         val r = state.substring(36, 45) // Red (RIGHT)
-        val d = state.substring(45, 54) // Yellow (DOWN)
+        var d = state.substring(45, 54) // Yellow (DOWN)
 
+        // 🔥 FIX: Rotate Top (UP) face 90 degrees Clockwise
+        u = rotate90CW(u)
+        
+        // 🔥 FIX: Rotate Bottom (DOWN) face 90 degrees Counter-Clockwise
+        // Based on user feedback: RRRRRRGGG -> RRGRRGRRG
+        d = rotate90CCW(d)
+
+        // 2. Map to 3D Renderer order: 0:FRONT, 1:RIGHT, 2:BACK, 3:LEFT, 4:UP, 5:DOWN
         val orderedFaces = listOf(f, r, b, l, u, d)
 
         val sb = StringBuilder()
@@ -168,6 +181,30 @@ class ScanCubeActivity : AppCompatActivity() {
             if (index < 5) sb.append("\n")
         }
         return sb.toString()
+    }
+
+    private fun rotate90CW(s: String): String {
+        val c = s.toCharArray()
+        // 0 1 2    6 3 0
+        // 3 4 5 -> 7 4 1
+        // 6 7 8    8 5 2
+        return String(charArrayOf(
+            c[6], c[3], c[0],
+            c[7], c[4], c[1],
+            c[8], c[5], c[2]
+        ))
+    }
+
+    private fun rotate90CCW(s: String): String {
+        val c = s.toCharArray()
+        // 0 1 2    2 5 8
+        // 3 4 5 -> 1 4 7
+        // 6 7 8    0 3 6
+        return String(charArrayOf(
+            c[2], c[5], c[8],
+            c[1], c[4], c[7],
+            c[0], c[3], c[6]
+        ))
     }
 
     private fun letterToIndex(ch: Char): Int? {
@@ -196,6 +233,7 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnSpeed, false)
         setButtonState(btnShuffle, false)
         setButtonState(btnLock, true)
+        setButtonState(btnBack, true) 
         updateLockButtonTint()
     }
 
@@ -205,19 +243,18 @@ class ScanCubeActivity : AppCompatActivity() {
         setButtonState(btnSpeed, true)
         setButtonState(btnShuffle, true)
         setButtonState(btnLock, true)
+        setButtonState(btnBack, true)
         updateLockButtonTint()
     }
 
     private fun setButtonState(btn: MaterialButton, enabled: Boolean) {
         btn.isEnabled = enabled
-        // #D32F2F is the primary red used in the layout for active buttons
-        // #BDBDBD is gray for disabled buttons
         val color = if (enabled) Color.parseColor("#D32F2F") else Color.parseColor("#BDBDBD")
         btn.backgroundTintList = ColorStateList.valueOf(color)
+        btn.invalidate()
     }
 
     private fun updateLockButtonTint() {
-        // Magenta for locked, a dark purple for unlocked (as per original design)
         val color = if (isLocked) Color.MAGENTA else Color.parseColor("#4C00FF")
         btnLock.backgroundTintList = ColorStateList.valueOf(color)
     }
