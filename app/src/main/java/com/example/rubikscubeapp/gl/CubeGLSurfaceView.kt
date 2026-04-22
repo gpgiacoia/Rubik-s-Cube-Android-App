@@ -9,9 +9,6 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import kotlin.math.abs
 import java.io.File
-import java.io.Reader
-import java.io.BufferedReader
-import java.io.StringReader
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -35,6 +32,7 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         setRenderer(renderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
+
     /**
      * Loads the cube state from a File. This reads the file on the caller thread
      * and forwards the contents to the GL thread via loadCubeFromCsvString.
@@ -49,9 +47,32 @@ class CubeGLSurfaceView @JvmOverloads constructor(
             e.printStackTrace()
         }
     }
+
     fun loadCubeFromCsvString(csv: String) {
         queueEvent {
             renderer.applyCubeStateCsv(csv)
+        }
+        requestRender()
+    }
+    private fun reorderForRenderer(state: String): String {
+        val U = state.substring(0, 9)
+        val L = state.substring(9, 18)
+        val F = state.substring(18, 27)
+        val R = state.substring(27, 36)
+        val B = state.substring(36, 45)
+        val D = state.substring(45, 54)
+
+        // 🔥 CRITICAL FIX: swap L and F
+        return U + F + L + R + B + D
+    }
+    /**
+     * Loads the cube state from a raw 54-character string (e.g., "RBBRBBWBBGRR...")
+     */
+    fun loadCubeFromRawString(state: String) {
+        val corrected = reorderForRenderer(state)
+
+        queueEvent {
+            renderer.applyRawStateString(corrected)
         }
         requestRender()
     }
@@ -101,18 +122,6 @@ class CubeGLSurfaceView @JvmOverloads constructor(
         return super.onTouchEvent(ev)
     }
 
-    /**
-     * Loads the cube state from a raw 54-character string (e.g., "RBBRBBWBBGRR...")
-     */
-    fun loadCubeFromRawString(state: String) {
-        queueEvent {
-            renderer.applyRawStateString(state)
-        }
-        requestRender()
-    }
-
-
-
     override fun performClick(): Boolean {
         super.performClick()
         return true
@@ -127,6 +136,7 @@ class CubeGLSurfaceView @JvmOverloads constructor(
 
         private lateinit var cube: RubiksCube
         private var pendingCsv: String? = null
+        private var pendingRaw: String? = null
 
         private var locked = false
         private val isoAngleX = 35.264f
@@ -139,11 +149,19 @@ class CubeGLSurfaceView @JvmOverloads constructor(
 
         fun applyRawStateString(state: String): Boolean {
             return if (!::cube.isInitialized) {
-                // If CSV logic was used elsewhere, we just convert raw to CSV format for consistency
-                // or handle raw directly in the RubiksCube class.
+                pendingRaw = state
                 false
             } else {
                 cube.setCubeFromRawString(state)
+            }
+        }
+
+        fun applyCubeStateCsv(csv: String): Boolean {
+            return if (!::cube.isInitialized) {
+                pendingCsv = csv
+                false
+            } else {
+                cube.setCubeFromCsvString(csv)
             }
         }
 
@@ -151,9 +169,14 @@ class CubeGLSurfaceView @JvmOverloads constructor(
             GLES20.glClearColor(0f, 0f, 0f, 0f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             cube = RubiksCube()
+            
             pendingCsv?.let { csv ->
                 cube.setCubeFromCsvString(csv)
                 pendingCsv = null
+            }
+            pendingRaw?.let { raw ->
+                cube.setCubeFromRawString(raw)
+                pendingRaw = null
             }
         }
 
@@ -193,15 +216,6 @@ class CubeGLSurfaceView @JvmOverloads constructor(
             if (!locked) {
                 angle += 0.5f
                 if (abs(angle) > 3600f) angle = angle % 360f
-            }
-        }
-
-        fun applyCubeStateCsv(csv: String): Boolean {
-            return if (!::cube.isInitialized) {
-                pendingCsv = csv
-                false
-            } else {
-                cube.setCubeFromCsvString(csv)
             }
         }
 
@@ -255,8 +269,6 @@ private class RubiksCube {
         }
     """
 
-
-
     // 0=white, 1=yellow, 2=green, 3=red, 4=orange, 5=blue
     private val INT_TO_COLOR = arrayOf(
         floatArrayOf(0.98f, 0.98f, 0.98f, 1f), // 0 white
@@ -287,7 +299,7 @@ private class RubiksCube {
     }
 
     private fun initDefaultState() {
-        val faceDefaults = intArrayOf(2, 3, 5, 4, 0, 1)
+        val faceDefaults = intArrayOf(2, 3, 5, 4, 0, 1) // FRONT, RIGHT, BACK, LEFT, UP, DOWN
         for (f in 0..5) {
             for (i in 0..8) {
                 cubeState[f][i] = faceDefaults[f]
@@ -297,19 +309,37 @@ private class RubiksCube {
 
     /**
      * Parses a 54-character string directly into the 6x9 cube state.
-     * Expects Pi order: U, L, F, R, B, D
+     * Maps Pi/Kociemba order (U, R, F, D, L, B) or (U, L, F, R, B, D) to 
+     * our internal order (FRONT, RIGHT, BACK, LEFT, UP, DOWN).
+     *
+     * Input order provided in prompt (assumed U, R, F, D, L, B based on common 54-char layouts):
+     * RBBRBBWBB (U)
+     * GRRGRRGWW (R)
+     * WWOWWOWWO (F)
+     * YYYYYYRRR (D)
+     * OOBOOBYYB (L)
+     * YGGOGGOGG (B)
      */
     fun setCubeFromRawString(state: String): Boolean {
         val cleanState = state.replace(Regex("[^A-Z]"), "")
         if (cleanState.length != 54) return false
 
-        val newState = Array(6) { IntArray(9) }
+        // Extract 9-char chunks
+        val u = cleanState.substring(0, 9)
+        val r = cleanState.substring(9, 18)
+        val f = cleanState.substring(18, 27)
+        val d = cleanState.substring(27, 36)
+        val l = cleanState.substring(36, 45)
+        val b = cleanState.substring(45, 54)
 
-        // Slices the 54 chars into 6 chunks of 9
-        for (f in 0 until 6) {
-            val chunk = cleanState.substring(f * 9, (f + 1) * 9)
-            for (i in 0 until 9) {
-                newState[f][i] = when (chunk[i]) {
+        // Internal order: 0:FRONT, 1:RIGHT, 2:BACK, 3:LEFT, 4:UP, 5:DOWN
+        val faces = listOf(f, r, b, l, u, d)
+        
+        val newState = Array(6) { IntArray(9) }
+        for (i in 0 until 6) {
+            val faceData = faces[i]
+            for (j in 0 until 9) {
+                newState[i][j] = when (faceData[j]) {
                     'W' -> 0 // White
                     'Y' -> 1 // Yellow
                     'G' -> 2 // Green
@@ -394,10 +424,9 @@ private class RubiksCube {
                     val y0 = -1f + (2f/3f)*iy + gapInCell
                     val y1 = -1f + (2f/3f)*(iy+1) - gapInCell
 
-                    // DATA CORRECTION:
-                    // Pi sends: [0,1,2] (Top), [3,4,5] (Mid), [6,7,8] (Bottom)
-                    // GL iy=0 (Bottom) should take Pi's index 6,7,8
-                    // GL iy=2 (Top) should take Pi's index 0,1,2
+                    // Mapping: indices 0..8 represent top-to-bottom, left-to-right.
+                    // GL iy=0 (Bottom) should take index 6,7,8
+                    // GL iy=2 (Top) should take index 0,1,2
                     val stickerIndex = (2 - iy) * 3 + ix
 
                     val colorIndex = cubeState[faceIndex][stickerIndex]
